@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#2f7f64" />
+    <title>Chess Mini App</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  </head>
+  <body>
+    <div id="notice" class="notice hidden"></div>
+
+    <section id="authScreen" class="screen card">
+      <h1>Chess Mini App</h1>
+      <p class="muted">Онлайн-шахматы 1v1 для Telegram</p>
+
+      <div id="authStatus" class="status-line">Инициализация...</div>
+
+      <div id="devAuthBlock" class="dev-auth hidden">
+        <label for="devName">Имя игрока</label>
+        <input id="devName" type="text" maxlength="48" placeholder="Например, Egor" />
+        <button id="devLoginBtn" class="primary">Войти (dev)</button>
+      </div>
+    </section>
+
+    <section id="appScreen" class="screen hidden">
+      <header class="app-header card">
+        <div>
+          <div class="title">Chess Mini App</div>
+          <div id="whoami" class="muted"></div>
+        </div>
+        <div id="connectionBadge" class="badge">offline</div>
+      </header>
+
+      <nav class="nav card">
+        <button class="tab active" data-view="lobby">Лобби</button>
+        <button class="tab" data-view="game">Игра</button>
+        <button class="tab" data-view="profile">Профиль</button>
+        <button class="tab" data-view="leaders">Рейтинг</button>
+        <button class="tab" data-view="history">История</button>
+      </nav>
+
+      <main>
+        <section id="view-lobby" class="view card">
+          <h2>Лобби</h2>
+          <div class="actions-row">
+            <button id="joinQueueBtn" class="primary">Найти игру</button>
+            <button id="leaveQueueBtn" class="ghost">Выйти из очереди</button>
+          </div>
+
+          <h3>Ожидающие игроки</h3>
+          <div id="waitingList" class="list"></div>
+
+          <h3>Входящие вызовы</h3>
+          <div id="incomingChallenges" class="list"></div>
+        </section>
+
+        <section id="view-game" class="view card hidden">
+          <h2>Партия</h2>
+          <div id="gameMeta" class="muted">Нет активной партии</div>
+
+          <div id="board" class="board"></div>
+
+          <div class="actions-row">
+            <button id="offerDrawBtn" class="ghost">Предложить ничью</button>
+            <button id="resignBtn" class="danger">Сдаться</button>
+            <button id="rematchBtn" class="primary">Реванш</button>
+          </div>
+
+          <h3>Ходы</h3>
+          <div id="moveList" class="moves"></div>
+        </section>
+
+        <section id="view-profile" class="view card hidden">
+          <h2>Профиль</h2>
+          <div id="profileStats" class="stats-grid"></div>
+        </section>
+
+        <section id="view-leaders" class="view card hidden">
+          <h2>Рейтинг</h2>
+          <div class="actions-row">
+            <button id="loadGlobalBtn" class="ghost">Общий</button>
+            <button id="loadDailyBtn" class="ghost">Суточный</button>
+          </div>
+          <div id="leadersInfo" class="muted"></div>
+          <div id="leadersTable" class="table-wrap"></div>
+        </section>
+
+        <section id="view-history" class="view card hidden">
+          <h2>История партий</h2>
+          <div id="historyList" class="list"></div>
+        </section>
+      </main>
+    </section>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>
