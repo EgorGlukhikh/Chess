@@ -26,19 +26,22 @@
 
     <section id="appScreen" class="screen hidden">
       <header class="app-header card">
-        <div>
-          <div class="title">Chess Mini App</div>
-          <div id="whoami" class="muted"></div>
+        <div class="header-left">
+          <span class="header-icon" aria-hidden="true">♔</span>
+          <div>
+            <div class="title header-title">Шахматы</div>
+            <div id="whoami" class="whoami-line"></div>
+          </div>
         </div>
         <div id="connectionBadge" class="badge">offline</div>
       </header>
 
-      <nav class="nav card">
-        <button class="tab active" data-view="lobby">Лобби</button>
-        <button class="tab" data-view="game">Игра</button>
-        <button class="tab" data-view="profile">Профиль</button>
-        <button class="tab" data-view="leaders">Рейтинг</button>
-        <button class="tab" data-view="history">История</button>
+      <nav class="nav card" role="tablist">
+        <button class="tab active" data-view="lobby" type="button">Лобби</button>
+        <button class="tab" data-view="game" type="button">Игра</button>
+        <button class="tab" data-view="profile" type="button">Профиль</button>
+        <button class="tab" data-view="leaders" type="button">Рейтинг</button>
+        <button class="tab" data-view="history" type="button">История</button>
       </nav>
 
       <main>
@@ -54,11 +57,22 @@
 
           <h3>Входящие вызовы</h3>
           <div id="incomingChallenges" class="list"></div>
+
+          <h3 class="lobby-rating-title">Рейтинг</h3>
+          <div id="lobbyLeaders" class="lobby-leaders"></div>
         </section>
 
         <section id="view-game" class="view card hidden">
           <h2>Партия</h2>
-          <div id="gameMeta" class="muted">Нет активной партии</div>
+          <div id="gameMeta" class="game-meta">Нет активной партии</div>
+
+          <div id="drawOfferBlock" class="draw-offer-banner hidden">
+            <span>Соперник предложил ничью</span>
+            <div class="actions-row">
+              <button id="drawAcceptBtn" class="primary">Принять</button>
+              <button id="drawDeclineBtn" class="ghost">Отклонить</button>
+            </div>
+          </div>
 
           <div id="board" class="board"></div>
 

@@ -1,11 +1,11 @@
-﻿@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap");
 
 :root {
   --bg-top: #f8f4e9;
   --bg-bottom: #d8e7c7;
   --card: #fffdf6;
-  --ink: #21333a;
-  --muted: #5c7278;
+  --ink: #1a2830;
+  --muted: #3d5058;
   --accent: #2f7f64;
   --accent-2: #b4752a;
   --danger: #b8413a;
@@ -25,12 +25,15 @@ body {
   color: var(--ink);
   background: radial-gradient(circle at 20% 10%, #fff4db 0%, transparent 30%),
     linear-gradient(160deg, var(--bg-top), var(--bg-bottom));
-  padding: calc(14px + env(safe-area-inset-top)) 12px calc(16px + env(safe-area-inset-bottom));
+  padding: calc(12px + env(safe-area-inset-top)) 10px calc(12px + env(safe-area-inset-bottom));
+  -webkit-overflow-scrolling: touch;
 }
 
 .screen {
   max-width: 540px;
   margin: 0 auto;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 .card {
@@ -45,26 +48,37 @@ body {
 .title {
   font-size: 1.2rem;
   font-weight: 700;
+  color: var(--ink);
 }
 
 h1,
 h2,
 h3 {
   margin: 0 0 10px;
+  color: var(--ink);
 }
 
 h2 {
-  font-size: 1.1rem;
+  font-size: 1.05rem;
+  font-weight: 700;
 }
 
 h3 {
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   margin-top: 14px;
+  font-weight: 600;
+  color: var(--ink);
 }
 
 .muted {
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.game-meta {
+  color: var(--ink);
+  font-size: 0.9rem;
+  margin-bottom: 8px;
 }
 
 .status-line {
@@ -124,6 +138,30 @@ button.danger {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.header-icon {
+  font-size: 2rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.header-title {
+  margin-bottom: 2px;
+}
+
+#whoami.whoami-line,
+.whoami-line {
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
 .badge {
@@ -137,15 +175,20 @@ button.danger {
 
 .nav {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 6px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
 }
 
 .tab {
-  font-size: 0.78rem;
+  min-width: 0;
+  font-size: 0.7rem;
+  padding: 8px 4px;
   border: 1px solid var(--border);
-  background: #f8fffb;
-  color: var(--muted);
+  background: #f0f8f4;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tab.active {
@@ -181,10 +224,59 @@ button.danger {
   color: var(--muted);
 }
 
+.draw-offer-banner {
+  background: #e8f5f0;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.draw-offer-banner span {
+  color: var(--ink);
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.lobby-rating-title {
+  margin-top: 16px;
+}
+
+.lobby-leaders {
+  overflow-x: auto;
+  margin-top: 6px;
+}
+
+.table-compact {
+  font-size: 0.8rem;
+  width: 100%;
+  min-width: 180px;
+  border-collapse: collapse;
+}
+
+.table-compact th,
+.table-compact td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.table-compact tr.me {
+  background: #e7f9ef;
+}
+
 .board {
-  margin: 12px auto;
-  width: min(92vw, 420px);
-  height: min(92vw, 420px);
+  margin: 10px auto;
+  width: min(92vw, 320px);
+  height: min(92vw, 320px);
+  max-width: 320px;
+  max-height: 320px;
+  aspect-ratio: 1;
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   border-radius: 12px;
@@ -198,9 +290,10 @@ button.danger {
   padding: 0;
   display: grid;
   place-items: center;
-  font-size: clamp(24px, 6vw, 36px);
+  font-size: clamp(22px, 5.5vw, 32px);
   line-height: 1;
   user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .square.light {
@@ -302,6 +395,26 @@ button.danger {
   display: none !important;
 }
 
+@media (min-width: 380px) {
+  .tab {
+    font-size: 0.75rem;
+    padding: 8px 6px;
+  }
+}
+
+@media (min-width: 400px) {
+  .board {
+    width: min(92vw, 360px);
+    height: min(92vw, 360px);
+    max-width: 360px;
+    max-height: 360px;
+  }
+
+  .square {
+    font-size: clamp(26px, 6vw, 38px);
+  }
+}
+
 @media (min-width: 700px) {
   body {
     padding-top: 24px;
@@ -313,5 +426,16 @@ button.danger {
 
   .tab {
     font-size: 0.88rem;
+  }
+
+  .board {
+    width: min(92vw, 420px);
+    height: min(92vw, 420px);
+    max-width: 420px;
+    max-height: 420px;
+  }
+
+  .square {
+    font-size: 36px;
   }
 }

@@ -74,8 +74,12 @@ const refs = {
   connectionBadge: document.getElementById("connectionBadge"),
   waitingList: document.getElementById("waitingList"),
   incomingChallenges: document.getElementById("incomingChallenges"),
+  lobbyLeaders: document.getElementById("lobbyLeaders"),
   board: document.getElementById("board"),
   gameMeta: document.getElementById("gameMeta"),
+  drawOfferBlock: document.getElementById("drawOfferBlock"),
+  drawAcceptBtn: document.getElementById("drawAcceptBtn"),
+  drawDeclineBtn: document.getElementById("drawDeclineBtn"),
   moveList: document.getElementById("moveList"),
   profileStats: document.getElementById("profileStats"),
   leadersInfo: document.getElementById("leadersInfo"),
@@ -119,6 +123,8 @@ function setView(view) {
   document.querySelectorAll(".view").forEach((el) => {
     el.classList.toggle("hidden", el.id !== `view-${view}`);
   });
+
+  if (view === "lobby") renderLobbyLeaders();
 
   const tg = getTelegramWebApp();
   if (tg?.BackButton) {
@@ -225,7 +231,7 @@ function renderWaiting() {
     const left = document.createElement("div");
     left.innerHTML = `
       <div>${escapeHtml(user.displayName)} ${user.id === state.me?.id ? "(вы)" : ""}</div>
-      <div class="meta">${escapeHtml(user.status)}</div>
+      <div class="meta">${escapeHtml(statusLabel(user.status))}</div>
     `;
 
     item.appendChild(left);
@@ -290,6 +296,29 @@ function renderIncomingChallenges() {
     item.appendChild(controls);
     refs.incomingChallenges.appendChild(item);
   }
+  renderLobbyLeaders();
+}
+
+function renderLobbyLeaders() {
+  if (!refs.lobbyLeaders) return;
+  const rows = (state.leadersRows || []).slice(0, 10);
+  if (!rows.length) {
+    refs.lobbyLeaders.innerHTML = '<div class="muted">Загрузка рейтинга…</div>';
+    return;
+  }
+  refs.lobbyLeaders.innerHTML = `
+    <table class="table table-compact">
+      <thead>
+        <tr><th>#</th><th>Игрок</th><th>Очки</th></tr>
+      </thead>
+      <tbody>
+        ${rows.map((r) => {
+          const me = r.user?.id === state.me?.id;
+          return `<tr class="${me ? "me" : ""}"><td>${r.rank}</td><td>${escapeHtml(r.user?.displayName || "")}</td><td>${r.points}</td></tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+  `;
 }
 
 function renderGame() {
@@ -302,14 +331,15 @@ function renderGame() {
     return;
   }
 
-  const white = game.players?.white?.displayName || "White";
-  const black = game.players?.black?.displayName || "Black";
+  const white = game.players?.white?.displayName || "Белые";
+  const black = game.players?.black?.displayName || "Черные";
   const opponent = game.viewerColor === "white" ? black : white;
+  const viewerSide = game.viewerColor === "white" ? "белые" : "черные";
 
   const turnText = game.status === "active" ? `Ход: ${game.turnColor === "white" ? "белые" : "черные"}` : "Партия завершена";
   const statusText = game.status === "active" ? (isMyTurn(game) ? "Ваш ход" : "Ход соперника") : game.finishReason || "finished";
 
-  refs.gameMeta.textContent = `Вы: ${game.viewerColor} | Соперник: ${opponent} | ${turnText} | ${statusText}`;
+  refs.gameMeta.textContent = `Вы: ${viewerSide} | Соперник: ${opponent} | ${turnText} | ${statusText}`;
 
   const pieceMap = fenToSquareMap(game.fen);
   const legalMoves = game.legalMoves || {};
@@ -352,6 +382,11 @@ function renderGame() {
   refs.offerDrawBtn.disabled = game.status !== "active";
   refs.resignBtn.disabled = game.status !== "active";
   refs.rematchBtn.disabled = game.status !== "finished";
+
+  if (refs.drawOfferBlock) {
+    const showDrawOffer = game.status === "active" && game.drawOfferBy === "opponent";
+    refs.drawOfferBlock.classList.toggle("hidden", !showDrawOffer);
+  }
 }
 
 function renderProfile() {
@@ -522,7 +557,7 @@ async function refreshMe() {
   const data = await api("/api/me");
   state.me = data.user;
   state.stats = data.stats;
-  refs.whoami.textContent = `${state.me.displayName} | ${data.status}`;
+  refs.whoami.textContent = state.me.displayName + " · " + statusLabel(data.status);
   renderProfile();
 }
 
@@ -544,6 +579,7 @@ async function loadGlobalLeaders() {
   state.leadersRows = data.leaderboard || [];
   refs.leadersInfo.textContent = "Общий рейтинг";
   renderLeaders();
+  renderLobbyLeaders();
 }
 
 async function loadDailyLeaders() {
@@ -677,6 +713,19 @@ function wireEvents() {
     state.socket.emit("game:draw:offer", { gameId: state.activeGame.id });
   });
 
+  if (refs.drawAcceptBtn) {
+    refs.drawAcceptBtn.addEventListener("click", () => {
+      if (!state.activeGame || state.activeGame.status !== "active") return;
+      state.socket.emit("game:draw:respond", { gameId: state.activeGame.id, accept: true });
+    });
+  }
+  if (refs.drawDeclineBtn) {
+    refs.drawDeclineBtn.addEventListener("click", () => {
+      if (!state.activeGame || state.activeGame.status !== "active") return;
+      state.socket.emit("game:draw:respond", { gameId: state.activeGame.id, accept: false });
+    });
+  }
+
   refs.resignBtn.addEventListener("click", () => {
     if (!state.activeGame || state.activeGame.status !== "active") return;
     if (!window.confirm("Подтвердить сдачу партии?")) return;
@@ -752,6 +801,16 @@ function escapeHtml(str) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function statusLabel(status) {
+  const labels = {
+    online: "в сети",
+    offline: "не в сети",
+    in_queue: "в очереди",
+    in_game: "в игре",
+  };
+  return labels[String(status)] || status;
 }
 
 async function bootstrap() {
