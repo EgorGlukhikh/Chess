@@ -1,17 +1,42 @@
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap");
 
-:root {
-  --bg-top: #f8f4e9;
-  --bg-bottom: #d8e7c7;
-  --card: #fffdf6;
+/* ——— Светлая тема (по умолчанию) ——— */
+:root,
+[data-theme="light"] {
+  --bg-top: #f0f4ef;
+  --bg-bottom: #e2eadc;
+  --card: #ffffff;
   --ink: #1a2830;
-  --muted: #3d5058;
+  --muted: #4a5c64;
   --accent: #2f7f64;
   --accent-2: #b4752a;
-  --danger: #b8413a;
-  --border: #cfe0d3;
+  --danger: #c23d36;
+  --border: #d0ddd4;
   --board-light: #f0dfc6;
   --board-dark: #6b8b6f;
+  --header-icon-color: #1a2830;
+  --tab-bg: #f0f8f4;
+  --list-item-bg: #f8fcf9;
+  --row-me: #e7f9ef;
+}
+
+/* ——— Тёмная тема ——— */
+[data-theme="dark"] {
+  --bg-top: #1e2433;
+  --bg-bottom: #151a26;
+  --card: #252b38;
+  --ink: #e8ecf0;
+  --muted: #9ca8b4;
+  --accent: #3d9b7a;
+  --accent-2: #d4925a;
+  --danger: #e0554d;
+  --border: #3a4252;
+  --board-light: #4a5568;
+  --board-dark: #2d3748;
+  --header-icon-color: #e8ecf0;
+  --tab-bg: #2a3140;
+  --list-item-bg: #2a3140;
+  --row-me: rgba(61, 155, 122, 0.2);
 }
 
 * {
@@ -23,10 +48,19 @@ body {
   min-height: 100vh;
   font-family: "Space Grotesk", "Segoe UI", sans-serif;
   color: var(--ink);
-  background: radial-gradient(circle at 20% 10%, #fff4db 0%, transparent 30%),
-    linear-gradient(160deg, var(--bg-top), var(--bg-bottom));
+  background: var(--bg-top);
   padding: calc(12px + env(safe-area-inset-top)) 10px calc(12px + env(safe-area-inset-bottom));
   -webkit-overflow-scrolling: touch;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+html[data-theme="light"] body,
+html:not([data-theme]) body {
+  background: linear-gradient(160deg, var(--bg-top), var(--bg-bottom));
+}
+
+html[data-theme="dark"] body {
+  background: linear-gradient(180deg, #1e2433 0%, #151a26 100%);
 }
 
 .screen {
@@ -40,9 +74,14 @@ body {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 16px;
-  box-shadow: 0 10px 24px rgba(41, 70, 54, 0.11);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
   padding: 14px;
   margin-bottom: 10px;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+[data-theme="dark"] .card {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
 }
 
 .title {
@@ -126,7 +165,7 @@ button.primary {
 button.ghost {
   color: var(--ink);
   border: 1px solid var(--border);
-  background: #f8fff4;
+  background: var(--tab-bg);
 }
 
 button.danger {
@@ -152,6 +191,34 @@ button.danger {
   font-size: 2rem;
   line-height: 1;
   flex-shrink: 0;
+  color: var(--header-icon-color);
+  transition: color 0.2s ease;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--tab-bg);
+  color: var(--ink);
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease, background 0.2s ease;
+}
+
+.icon-btn:active {
+  transform: scale(0.95);
 }
 
 .header-title {
@@ -166,11 +233,15 @@ button.danger {
 
 .badge {
   border-radius: 999px;
-  background: #ebf7ee;
-  color: #3f7856;
-  border: 1px solid #bfe4c8;
+  background: rgba(47, 127, 100, 0.2);
+  color: var(--accent);
+  border: 1px solid var(--accent);
   padding: 6px 10px;
   font-size: 0.8rem;
+}
+
+[data-theme="dark"] .badge {
+  background: rgba(61, 155, 122, 0.25);
 }
 
 .nav {
@@ -184,17 +255,18 @@ button.danger {
   font-size: 0.7rem;
   padding: 8px 4px;
   border: 1px solid var(--border);
-  background: #f0f8f4;
+  background: var(--tab-bg);
   color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: background 0.2s ease, color 0.2s ease;
 }
 
 .tab.active {
   color: #fff;
-  border-color: #2f7f64;
-  background: linear-gradient(135deg, #1c6b58, #368d70);
+  border-color: var(--accent);
+  background: linear-gradient(135deg, #1c6b58, var(--accent));
 }
 
 .actions-row {
@@ -210,7 +282,7 @@ button.danger {
 
 .list-item {
   border: 1px solid var(--border);
-  background: #fcfff8;
+  background: var(--list-item-bg);
   border-radius: 12px;
   padding: 10px;
   display: flex;
@@ -225,7 +297,7 @@ button.danger {
 }
 
 .draw-offer-banner {
-  background: #e8f5f0;
+  background: rgba(47, 127, 100, 0.12);
   border: 1px solid var(--accent);
   border-radius: 12px;
   padding: 10px 12px;
@@ -235,6 +307,83 @@ button.danger {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+/* ——— Игроки над доской (аватары) ——— */
+.game-players-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0 12px;
+  margin-bottom: 4px;
+}
+
+.game-players-strip.hidden {
+  display: none !important;
+}
+
+.player-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.player-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.player-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.player-avatar .avatar-initial {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.player-name {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  text-align: center;
+}
+
+.player-side {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.player-turn-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 6px 10px;
+  background: rgba(47, 127, 100, 0.15);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+[data-theme="dark"] .player-turn-badge {
+  background: rgba(61, 155, 122, 0.2);
 }
 
 .draw-offer-banner span {
@@ -267,7 +416,7 @@ button.danger {
 }
 
 .table-compact tr.me {
-  background: #e7f9ef;
+  background: var(--row-me);
 }
 
 .board {
@@ -281,7 +430,7 @@ button.danger {
   grid-template-columns: repeat(8, 1fr);
   border-radius: 12px;
   overflow: hidden;
-  border: 2px solid #3f5c45;
+  border: 2px solid var(--board-dark);
 }
 
 .square {
@@ -321,7 +470,7 @@ button.danger {
 
 .moves {
   border: 1px solid var(--border);
-  background: #f9fff8;
+  background: var(--tab-bg);
   border-radius: 12px;
   min-height: 60px;
   max-height: 170px;
@@ -332,7 +481,7 @@ button.danger {
 
 .move-row {
   padding: 3px 0;
-  border-bottom: 1px dashed #d8e7d8;
+  border-bottom: 1px dashed var(--border);
 }
 
 .move-row:last-child {
@@ -349,7 +498,7 @@ button.danger {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 10px;
-  background: #f9fff7;
+  background: var(--tab-bg);
 }
 
 .stat-value {
@@ -369,13 +518,13 @@ button.danger {
 
 .table th,
 .table td {
-  border-bottom: 1px solid #dbe9df;
+  border-bottom: 1px solid var(--border);
   padding: 8px 6px;
   text-align: left;
 }
 
 .table tr.me {
-  background: #e7f9ef;
+  background: var(--row-me);
 }
 
 .notice {

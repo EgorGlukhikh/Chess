@@ -33,7 +33,10 @@
             <div id="whoami" class="whoami-line"></div>
           </div>
         </div>
-        <div id="connectionBadge" class="badge">offline</div>
+        <div class="header-actions">
+          <button type="button" id="themeToggle" class="icon-btn" title="Сменить тему" aria-label="Тема">🌓</button>
+          <div id="connectionBadge" class="badge">offline</div>
+        </div>
       </header>
 
       <nav class="nav card" role="tablist">
@@ -71,6 +74,20 @@
             <div class="actions-row">
               <button id="drawAcceptBtn" class="primary">Принять</button>
               <button id="drawDeclineBtn" class="ghost">Отклонить</button>
+            </div>
+          </div>
+
+          <div id="gamePlayersStrip" class="game-players-strip hidden">
+            <div class="player-slot" id="playerWhiteSlot">
+              <div class="player-avatar" id="playerWhiteAvatar"></div>
+              <div class="player-name" id="playerWhiteName"></div>
+              <div class="player-side">Белые</div>
+            </div>
+            <div class="player-turn-badge" id="playerTurnBadge"></div>
+            <div class="player-slot" id="playerBlackSlot">
+              <div class="player-avatar" id="playerBlackAvatar"></div>
+              <div class="player-name" id="playerBlackName"></div>
+              <div class="player-side">Черные</div>
             </div>
           </div>
 

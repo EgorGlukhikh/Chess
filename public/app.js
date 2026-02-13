@@ -20,22 +20,45 @@ function getTelegramWebApp() {
   return typeof window !== "undefined" && window.Telegram?.WebApp;
 }
 
+const THEME_KEY = "chess_theme";
+
+function applyTheme(theme) {
+  const next = theme === "dark" ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", next);
+  if (refs.themeToggle) {
+    refs.themeToggle.textContent = next === "dark" ? "☀️" : "🌙";
+    refs.themeToggle.setAttribute("title", next === "dark" ? "Светлая тема" : "Тёмная тема");
+  }
+  try {
+    localStorage.setItem(THEME_KEY, next);
+  } catch (_) {}
+}
+
+function initTheme() {
+  const saved = localStorage.getItem(THEME_KEY);
+  const tg = getTelegramWebApp();
+  const tgDark = tg && tg.colorScheme === "dark";
+  if (saved) {
+    applyTheme(saved);
+  } else if (tgDark) {
+    applyTheme("dark");
+  } else {
+    applyTheme("light");
+  }
+  if (tg && tg.onEvent) {
+    tg.onEvent("themeChanged", () => {
+      if (!localStorage.getItem(THEME_KEY)) applyTheme(tg.colorScheme === "dark" ? "dark" : "light");
+    });
+  }
+}
+
 function initTelegramWebApp() {
   const tg = getTelegramWebApp();
   if (!tg) return;
 
   tg.ready();
   tg.expand();
-
-  const theme = tg.themeParams || {};
-  if (theme.bg_color) {
-    document.documentElement.style.setProperty("--tg-bg", theme.bg_color);
-    document.body.style.background = theme.bg_color;
-  }
-  if (theme.text_color) {
-    document.documentElement.style.setProperty("--tg-text", theme.text_color);
-    document.body.style.color = theme.text_color;
-  }
+  initTheme();
 
   if (tg.BackButton) {
     tg.BackButton.onClick(() => {
@@ -72,11 +95,18 @@ const refs = {
   devLoginBtn: document.getElementById("devLoginBtn"),
   whoami: document.getElementById("whoami"),
   connectionBadge: document.getElementById("connectionBadge"),
+  themeToggle: document.getElementById("themeToggle"),
   waitingList: document.getElementById("waitingList"),
   incomingChallenges: document.getElementById("incomingChallenges"),
   lobbyLeaders: document.getElementById("lobbyLeaders"),
   board: document.getElementById("board"),
   gameMeta: document.getElementById("gameMeta"),
+  gamePlayersStrip: document.getElementById("gamePlayersStrip"),
+  playerWhiteAvatar: document.getElementById("playerWhiteAvatar"),
+  playerWhiteName: document.getElementById("playerWhiteName"),
+  playerBlackAvatar: document.getElementById("playerBlackAvatar"),
+  playerBlackName: document.getElementById("playerBlackName"),
+  playerTurnBadge: document.getElementById("playerTurnBadge"),
   drawOfferBlock: document.getElementById("drawOfferBlock"),
   drawAcceptBtn: document.getElementById("drawAcceptBtn"),
   drawDeclineBtn: document.getElementById("drawDeclineBtn"),
@@ -328,6 +358,7 @@ function renderGame() {
     refs.gameMeta.textContent = "Нет активной партии";
     refs.board.innerHTML = "";
     refs.moveList.innerHTML = '<div class="muted">Ходы появятся после старта партии</div>';
+    if (refs.gamePlayersStrip) refs.gamePlayersStrip.classList.add("hidden");
     return;
   }
 
@@ -340,6 +371,31 @@ function renderGame() {
   const statusText = game.status === "active" ? (isMyTurn(game) ? "Ваш ход" : "Ход соперника") : game.finishReason || "finished";
 
   refs.gameMeta.textContent = `Вы: ${viewerSide} | Соперник: ${opponent} | ${turnText} | ${statusText}`;
+
+  if (refs.gamePlayersStrip) {
+    refs.gamePlayersStrip.classList.remove("hidden");
+    const white = game.players?.white;
+    const black = game.players?.black;
+    const whiteName = white?.displayName || "Белые";
+    const blackName = black?.displayName || "Черные";
+    if (refs.playerWhiteAvatar) {
+      refs.playerWhiteAvatar.innerHTML = white?.avatarUrl
+        ? `<img src="${escapeHtml(white.avatarUrl)}" alt="">`
+        : `<span class="avatar-initial">${escapeHtml((whiteName[0] || "Б").toUpperCase())}</span>`;
+    }
+    if (refs.playerWhiteName) refs.playerWhiteName.textContent = whiteName;
+    if (refs.playerBlackAvatar) {
+      refs.playerBlackAvatar.innerHTML = black?.avatarUrl
+        ? `<img src="${escapeHtml(black.avatarUrl)}" alt="">`
+        : `<span class="avatar-initial">${escapeHtml((blackName[0] || "Ч").toUpperCase())}</span>`;
+    }
+    if (refs.playerBlackName) refs.playerBlackName.textContent = blackName;
+    if (refs.playerTurnBadge) {
+      refs.playerTurnBadge.textContent = game.status === "active"
+        ? (game.turnColor === "white" ? "Ход белых" : "Ход черных")
+        : "Партия завершена";
+    }
+  }
 
   const pieceMap = fenToSquareMap(game.fen);
   const legalMoves = game.legalMoves || {};
@@ -738,6 +794,13 @@ function wireEvents() {
     showNotice("Предложение реванша отправлено");
   });
 
+  if (refs.themeToggle) {
+    refs.themeToggle.addEventListener("click", () => {
+      const cur = document.documentElement.getAttribute("data-theme") || "light";
+      applyTheme(cur === "dark" ? "light" : "dark");
+    });
+  }
+
   refs.loadGlobalBtn.addEventListener("click", () => loadGlobalLeaders().catch((err) => showNotice(err.message)));
   refs.loadDailyBtn.addEventListener("click", () => loadDailyLeaders().catch((err) => showNotice(err.message)));
 
@@ -815,6 +878,7 @@ function statusLabel(status) {
 
 async function bootstrap() {
   initTelegramWebApp();
+  initTheme();
 
   wireEvents();
   renderIncomingChallenges();
