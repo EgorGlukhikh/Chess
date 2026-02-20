@@ -14,6 +14,7 @@ const state = {
   currentView: "lobby",
   noticeTimer: null,
   lobbyPollTimer: null,
+  gamePollTimer: null,
 };
 
 /** Telegram Mini App: доступен только при открытии из бота */
@@ -424,6 +425,7 @@ function renderGame() {
     const piece = pieceMap[square];
     if (piece) {
       btn.textContent = PIECES[piece] || "";
+      btn.classList.add(piece === piece.toUpperCase() ? "piece-white" : "piece-black");
     } else if (targetSquares.includes(square)) {
       const hint = document.createElement("span");
       hint.className = "hint";
@@ -742,6 +744,29 @@ function startLobbyPolling() {
   }, 5000);
 }
 
+async function syncActiveGame() {
+  if (!state.activeGame?.id || !state.token) return;
+  try {
+    const data = await api(`/api/games/${encodeURIComponent(state.activeGame.id)}`);
+    if (data?.game) {
+      state.activeGame = data.game;
+      renderGame();
+    }
+  } catch (_) {}
+}
+
+function startGamePolling() {
+  if (state.gamePollTimer) {
+    clearInterval(state.gamePollTimer);
+  }
+
+  state.gamePollTimer = setInterval(() => {
+    if (!state.token) return;
+    if (!state.activeGame || state.activeGame.status !== "active") return;
+    syncActiveGame();
+  }, 4000);
+}
+
 async function joinQueue() {
   try {
     await api("/api/lobby/queue/join", { method: "POST" });
@@ -838,6 +863,7 @@ async function onAuthenticated(authResponse) {
   refs.appScreen.classList.remove("hidden");
   connectSocket();
   startLobbyPolling();
+  startGamePolling();
   renderIncomingChallenges();
   renderGame();
   setView("lobby");
@@ -854,6 +880,10 @@ async function tryLoginByStoredToken() {
     if (state.lobbyPollTimer) {
       clearInterval(state.lobbyPollTimer);
       state.lobbyPollTimer = null;
+    }
+    if (state.gamePollTimer) {
+      clearInterval(state.gamePollTimer);
+      state.gamePollTimer = null;
     }
     localStorage.removeItem("chess_token");
     return false;
