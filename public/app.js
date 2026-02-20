@@ -102,6 +102,8 @@ const refs = {
   incomingChallenges: document.getElementById("incomingChallenges"),
   lobbyLeaders: document.getElementById("lobbyLeaders"),
   board: document.getElementById("board"),
+  boardAxisRanks: document.getElementById("boardAxisRanks"),
+  boardAxisFiles: document.getElementById("boardAxisFiles"),
   gameMeta: document.getElementById("gameMeta"),
   gamePlayersStrip: document.getElementById("gamePlayersStrip"),
   playerWhiteAvatar: document.getElementById("playerWhiteAvatar"),
@@ -367,6 +369,8 @@ function renderGame() {
   if (!game) {
     refs.gameMeta.textContent = "Нет активной партии";
     refs.board.innerHTML = "";
+    if (refs.boardAxisRanks) refs.boardAxisRanks.innerHTML = "";
+    if (refs.boardAxisFiles) refs.boardAxisFiles.innerHTML = "";
     refs.moveList.innerHTML = '<div class="muted">Ходы появятся после старта партии</div>';
     if (refs.gamePlayersStrip) refs.gamePlayersStrip.classList.add("hidden");
     return;
@@ -416,24 +420,24 @@ function renderGame() {
   refs.board.innerHTML = "";
 
   const squares = squareOrder(game.viewerColor);
-  const leftFile = game.viewerColor === "black" ? "h" : "a";
-  const bottomRank = game.viewerColor === "black" ? "8" : "1";
+  const rankLabels = game.viewerColor === "black"
+    ? ["1", "2", "3", "4", "5", "6", "7", "8"]
+    : ["8", "7", "6", "5", "4", "3", "2", "1"];
+  const fileLabels = game.viewerColor === "black"
+    ? ["h", "g", "f", "e", "d", "c", "b", "a"]
+    : ["a", "b", "c", "d", "e", "f", "g", "h"];
+
+  if (refs.boardAxisRanks) {
+    refs.boardAxisRanks.innerHTML = rankLabels.map((v) => `<span>${v}</span>`).join("");
+  }
+  if (refs.boardAxisFiles) {
+    refs.boardAxisFiles.innerHTML = fileLabels.map((v) => `<span>${v}</span>`).join("");
+  }
 
   for (const square of squares) {
     const btn = document.createElement("button");
     btn.className = `square ${isSquareLight(square) ? "light" : "dark"}`;
     btn.dataset.square = square;
-
-    const file = square[0];
-    const rank = square[1];
-    if (file === leftFile) {
-      btn.classList.add("rank-label");
-      btn.dataset.rankLabel = rank;
-    }
-    if (rank === bottomRank) {
-      btn.classList.add("file-label");
-      btn.dataset.fileLabel = file;
-    }
 
     if (showHints && selected === square) {
       btn.classList.add("selected");

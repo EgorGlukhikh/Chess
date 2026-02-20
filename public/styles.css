@@ -421,16 +421,21 @@ button.danger {
 
 /* Обёртка резервирует квадрат — доску не сжимает flex/верстка */
 .board-wrap {
+  --axis-size: 16px;
+  --board-size: 280px;
   margin: 10px auto;
-  width: 280px;
-  aspect-ratio: 1;
+  width: calc(var(--board-size) + var(--axis-size));
+  height: calc(var(--board-size) + var(--axis-size));
   flex-shrink: 0;
-  min-height: 280px;
+  position: relative;
 }
 
 .board {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  left: var(--axis-size);
+  top: 0;
+  width: var(--board-size);
+  height: var(--board-size);
   min-width: 0;
   min-height: 0;
   display: grid;
@@ -439,6 +444,36 @@ button.danger {
   border-radius: 12px;
   overflow: hidden;
   border: 2px solid var(--board-dark);
+}
+
+.board-axis-ranks {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--axis-size);
+  height: var(--board-size);
+  display: grid;
+  grid-template-rows: repeat(8, 1fr);
+  align-items: center;
+  justify-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.board-axis-files {
+  position: absolute;
+  left: var(--axis-size);
+  bottom: 0;
+  width: var(--board-size);
+  height: var(--axis-size);
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  align-items: center;
+  justify-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
 }
 
 .square {
@@ -495,38 +530,6 @@ button.danger {
   height: 14px;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.28);
-}
-
-.square.rank-label::before,
-.square.file-label::after {
-  position: absolute;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
-  pointer-events: none;
-  opacity: 0.9;
-}
-
-.square.rank-label::before {
-  content: attr(data-rank-label);
-  top: 3px;
-  left: 4px;
-}
-
-.square.file-label::after {
-  content: attr(data-file-label);
-  right: 4px;
-  bottom: 3px;
-}
-
-.square.light.rank-label::before,
-.square.light.file-label::after {
-  color: rgba(27, 34, 39, 0.72);
-}
-
-.square.dark.rank-label::before,
-.square.dark.file-label::after {
-  color: rgba(238, 243, 247, 0.85);
 }
 
 .moves {
@@ -614,8 +617,7 @@ button.danger {
 
 @media (min-width: 400px) {
   .board-wrap {
-    width: 320px;
-    min-height: 320px;
+    --board-size: 320px;
   }
 
   .square {
@@ -637,8 +639,7 @@ button.danger {
   }
 
   .board-wrap {
-    width: 400px;
-    min-height: 400px;
+    --board-size: 400px;
   }
 
   .square {
