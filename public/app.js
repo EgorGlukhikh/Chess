@@ -13,6 +13,7 @@ const state = {
   leadersRows: [],
   currentView: "lobby",
   noticeTimer: null,
+  lobbyPollTimer: null,
 };
 
 /** Telegram Mini App: доступен только при открытии из бота */
@@ -269,14 +270,17 @@ function renderWaiting() {
     if (state.me && user.id !== state.me.id) {
       const btn = document.createElement("button");
       btn.className = "ghost";
-      btn.textContent = "Вызвать";
+      btn.textContent = "Join";
       btn.onclick = async () => {
         try {
-          await api("/api/lobby/challenge", {
+          const data = await api("/api/lobby/queue/join-user", {
             method: "POST",
             body: { toUserId: user.id },
           });
-          showNotice(`Вызов отправлен: ${user.displayName}`);
+          if (data?.gameId) {
+            await openGameFromHistory(data.gameId);
+          }
+          showNotice(`Game started with ${user.displayName}`);
         } catch (err) {
           showNotice(err.message);
         }
@@ -655,7 +659,10 @@ function connectSocket() {
     state.socket.disconnect();
   }
 
-  state.socket = io({ auth: { token: state.token } });
+  state.socket = io({
+    auth: { token: state.token },
+    transports: ["polling", "websocket"],
+  });
 
   state.socket.on("connect", () => {
     setConnectionBadge("online");
@@ -724,10 +731,21 @@ function connectSocket() {
   });
 }
 
+function startLobbyPolling() {
+  if (state.lobbyPollTimer) {
+    clearInterval(state.lobbyPollTimer);
+  }
+
+  state.lobbyPollTimer = setInterval(() => {
+    if (!state.token) return;
+    loadWaiting().catch(() => {});
+  }, 5000);
+}
+
 async function joinQueue() {
   try {
     await api("/api/lobby/queue/join", { method: "POST" });
-    showNotice("Вы в очереди");
+    showNotice("Table created. Waiting for opponent");
   } catch (err) {
     showNotice(err.message);
   }
@@ -819,6 +837,7 @@ async function onAuthenticated(authResponse) {
   refs.authScreen.classList.add("hidden");
   refs.appScreen.classList.remove("hidden");
   connectSocket();
+  startLobbyPolling();
   renderIncomingChallenges();
   renderGame();
   setView("lobby");
@@ -832,6 +851,10 @@ async function tryLoginByStoredToken() {
     return true;
   } catch {
     state.token = "";
+    if (state.lobbyPollTimer) {
+      clearInterval(state.lobbyPollTimer);
+      state.lobbyPollTimer = null;
+    }
     localStorage.removeItem("chess_token");
     return false;
   }
@@ -839,7 +862,8 @@ async function tryLoginByStoredToken() {
 
 async function tryTelegramLogin() {
   const tg = window.Telegram?.WebApp;
-  if (!tg || !tg.initData) {
+  const initData = resolveTelegramInitData(tg);
+  if (!initData) {
     return false;
   }
 
@@ -847,7 +871,7 @@ async function tryTelegramLogin() {
     tg.ready();
     const data = await api("/api/auth/telegram", {
       method: "POST",
-      body: { initData: tg.initData },
+      body: { initData },
     });
     await onAuthenticated(data);
     return true;
@@ -855,6 +879,27 @@ async function tryTelegramLogin() {
     setAuthStatus(`Telegram auth error: ${err.message}`);
     return false;
   }
+}
+
+function resolveTelegramInitData(tg) {
+  if (tg?.initData) return tg.initData;
+
+  const sources = [window.location.hash, window.location.search];
+  for (const raw of sources) {
+    if (!raw) continue;
+    const qs = raw.startsWith("#") || raw.startsWith("?") ? raw.slice(1) : raw;
+    const params = new URLSearchParams(qs);
+    const encoded = params.get("tgWebAppData");
+    if (!encoded) continue;
+    try {
+      const decoded = decodeURIComponent(encoded);
+      if (decoded) return decoded;
+    } catch (_) {
+      if (encoded) return encoded;
+    }
+  }
+
+  return "";
 }
 
 function escapeHtml(str) {

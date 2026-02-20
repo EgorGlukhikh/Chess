@@ -20,6 +20,10 @@ const {
   listGames,
   listGamesByUser,
   getGameById,
+  listOpenTables,
+  getOpenTableByOwner,
+  createOpenTable,
+  removeOpenTableByOwner,
   listActiveGames,
   createGame,
   touchGame,
@@ -58,7 +62,6 @@ const io = new Server(server, {
   },
 });
 
-const queue = [];
 const challenges = new Map();
 const onlineSocketsByUser = new Map();
 const activeGameByUser = new Map();
@@ -96,7 +99,7 @@ function isOnline(userId) {
 }
 
 function isInQueue(userId) {
-  return queue.includes(userId);
+  return !!getOpenTableByOwner(userId);
 }
 
 function isInGame(userId) {
@@ -111,14 +114,7 @@ function getPresenceStatus(userId) {
 }
 
 function removeFromQueue(userId) {
-  let changed = false;
-  while (true) {
-    const idx = queue.indexOf(userId);
-    if (idx === -1) break;
-    queue.splice(idx, 1);
-    changed = true;
-  }
-  return changed;
+  return removeOpenTableByOwner(userId);
 }
 
 function cleanupChallenges() {
@@ -140,12 +136,15 @@ function clearUserChallenges(userId) {
 
 function getWaitingList() {
   cleanupChallenges();
-  const uniqueQueue = [...new Set(queue)];
-  return uniqueQueue
-    .map((userId) => {
+  return listOpenTables()
+    .map((table) => {
+      const userId = table.ownerUserId;
       const user = getUserById(userId);
       if (!user) return null;
+      if (isInGame(userId)) return null;
       return {
+        tableId: table.id,
+        createdAt: table.createdAt,
         ...publicUser(user),
         status: getPresenceStatus(userId),
       };
@@ -367,32 +366,7 @@ function finishByBoardState(game, chess) {
 }
 
 function matchmakeQueue() {
-  while (queue.length >= 2) {
-    const first = queue.shift();
-    if (!first) continue;
-    if (isInGame(first) || !isOnline(first)) {
-      continue;
-    }
-
-    let secondIndex = -1;
-    for (let i = 0; i < queue.length; i += 1) {
-      const candidate = queue[i];
-      if (!candidate) continue;
-      if (isInGame(candidate)) continue;
-      if (!isOnline(candidate)) continue;
-      secondIndex = i;
-      break;
-    }
-
-    if (secondIndex === -1) {
-      queue.unshift(first);
-      break;
-    }
-
-    const second = queue.splice(secondIndex, 1)[0];
-    createAndStartGame(first, second);
-  }
-
+  // Manual-join mode: tables are matched only by explicit user action.
   emitWaitingList();
   emitPresence();
 }
@@ -599,19 +573,50 @@ app.post("/api/lobby/queue/join", authMiddleware, (req, res) => {
     return res.status(409).json({ error: "You are already in game" });
   }
 
-  if (!isInQueue(user.id)) {
-    queue.push(user.id);
-  }
-
-  matchmakeQueue();
+  const table = createOpenTable(user.id);
   emitWaitingList();
   emitPresence();
 
   return res.json({
     ok: true,
+    tableId: table.id,
     status: getPresenceStatus(user.id),
     waiting: getWaitingList(),
   });
+});
+
+app.post("/api/lobby/queue/join-user", authMiddleware, (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+
+  const toUserId = String(req.body?.toUserId || "").trim();
+  if (!toUserId) {
+    return res.status(400).json({ error: "toUserId is required" });
+  }
+  if (toUserId === user.id) {
+    return res.status(400).json({ error: "Cannot join yourself" });
+  }
+
+  const targetUser = getUserById(toUserId);
+  if (!targetUser) {
+    return res.status(404).json({ error: "Target user not found" });
+  }
+
+  const targetTable = getOpenTableByOwner(toUserId);
+  if (!targetTable) {
+    return res.status(409).json({ error: "Target is not waiting now" });
+  }
+
+  if (isInGame(user.id) || isInGame(toUserId)) {
+    return res.status(409).json({ error: "One of users is already in game" });
+  }
+
+  const game = createAndStartGame(targetTable.ownerUserId, user.id);
+  if (!game) {
+    return res.status(409).json({ error: "Failed to create game" });
+  }
+
+  return res.json({ ok: true, gameId: game.id });
 });
 
 app.post("/api/lobby/queue/leave", authMiddleware, (req, res) => {
@@ -1054,7 +1059,6 @@ io.on("connection", (socket) => {
       set.delete(socket.id);
       if (set.size === 0) {
         onlineSocketsByUser.delete(userId);
-        removeFromQueue(userId);
       }
     }
 

@@ -9,6 +9,7 @@ const EMPTY_DB = {
   users: [],
   stats: {},
   games: [],
+  tables: [],
 };
 
 let db;
@@ -37,6 +38,7 @@ function initDb() {
   if (!Array.isArray(db.users)) db.users = [];
   if (!db.stats || typeof db.stats !== "object") db.stats = {};
   if (!Array.isArray(db.games)) db.games = [];
+  if (!Array.isArray(db.tables)) db.tables = [];
 }
 
 function getDb() {
@@ -169,6 +171,44 @@ function getGameById(gameId) {
   return getDb().games.find((g) => g.id === gameId) || null;
 }
 
+function listOpenTables() {
+  return getDb().tables.filter((t) => t.status === "open");
+}
+
+function getOpenTableByOwner(ownerUserId) {
+  return listOpenTables().find((t) => t.ownerUserId === ownerUserId) || null;
+}
+
+function createOpenTable(ownerUserId) {
+  const dbRef = getDb();
+  const existing = getOpenTableByOwner(ownerUserId);
+  if (existing) return existing;
+
+  const now = nowIso();
+  const table = {
+    id: crypto.randomUUID(),
+    ownerUserId,
+    status: "open",
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  dbRef.tables.push(table);
+  saveDb();
+  return table;
+}
+
+function removeOpenTableByOwner(ownerUserId) {
+  const dbRef = getDb();
+  const before = dbRef.tables.length;
+  dbRef.tables = dbRef.tables.filter((t) => !(t.ownerUserId === ownerUserId && t.status === "open"));
+  const changed = dbRef.tables.length !== before;
+  if (changed) {
+    saveDb();
+  }
+  return changed;
+}
+
 function listActiveGames() {
   return getDb().games.filter((g) => g.status === "active");
 }
@@ -252,6 +292,10 @@ module.exports = {
   listGames,
   listGamesByUser,
   getGameById,
+  listOpenTables,
+  getOpenTableByOwner,
+  createOpenTable,
+  removeOpenTableByOwner,
   listActiveGames,
   createGame,
   touchGame,
