@@ -24,6 +24,7 @@ const {
   getOpenTableByOwner,
   createOpenTable,
   removeOpenTableByOwner,
+  setUserHintMode,
   listActiveGames,
   createGame,
   touchGame,
@@ -38,6 +39,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "change-me";
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const APP_TIMEZONE = process.env.APP_TIMEZONE || "Europe/Moscow";
 const ALLOW_DEV_AUTH = String(process.env.ALLOW_DEV_AUTH || "true").toLowerCase() === "true";
+const TRAINING_BOT_USER_ID = "bot:trainer";
 
 if (JWT_SECRET === "change-me" && process.env.NODE_ENV === "production") {
   console.warn("WARN: JWT_SECRET is default. Set JWT_SECRET in production.");
@@ -90,7 +92,25 @@ function publicUser(user) {
     username: user.username,
     displayName: user.displayName,
     avatarUrl: user.avatarUrl,
+    hintMode: user.hintMode === "pro" ? "pro" : "training",
   };
+}
+
+function isBotUserId(userId) {
+  return String(userId) === TRAINING_BOT_USER_ID;
+}
+
+function publicUserById(userId) {
+  if (isBotUserId(userId)) {
+    return {
+      id: TRAINING_BOT_USER_ID,
+      username: "trainer_bot",
+      displayName: "Trainer Bot",
+      avatarUrl: null,
+      hintMode: "pro",
+    };
+  }
+  return publicUser(getUserById(userId));
 }
 
 function isOnline(userId) {
@@ -103,6 +123,7 @@ function isInQueue(userId) {
 }
 
 function isInGame(userId) {
+  if (isBotUserId(userId)) return false;
   return activeGameByUser.has(userId);
 }
 
@@ -222,9 +243,9 @@ function serializeMove(move) {
 
 function buildGameState(game, viewerId) {
   const chess = new Chess(game.fenCurrent);
-  const viewer = getUserById(viewerId);
-  const white = getUserById(game.whiteUserId);
-  const black = getUserById(game.blackUserId);
+  const viewer = publicUserById(viewerId);
+  const white = publicUserById(game.whiteUserId);
+  const black = publicUserById(game.blackUserId);
 
   const drawOfferBy = game.drawOfferBy
     ? game.drawOfferBy === viewerId
@@ -235,6 +256,7 @@ function buildGameState(game, viewerId) {
   return {
     id: game.id,
     status: game.status,
+    rated: game.rated !== false,
     result: game.result,
     finishReason: game.finishReason,
     startedAt: game.startedAt,
@@ -247,11 +269,11 @@ function buildGameState(game, viewerId) {
     rematchBy: Array.isArray(game.rematchBy)
       ? game.rematchBy.map((userId) => (userId === viewerId ? "self" : "opponent"))
       : [],
-    viewer: publicUser(viewer),
+    viewer,
     viewerColor: playerColor(game, viewerId),
     players: {
-      white: publicUser(white),
-      black: publicUser(black),
+      white,
+      black,
     },
     legalMoves: buildLegalMoves(game, viewerId),
     moves: Array.isArray(game.moves) ? game.moves.map(serializeMove) : [],
@@ -264,24 +286,24 @@ function emitGameState(game) {
 }
 
 function emitMatchFound(game) {
-  const white = getUserById(game.whiteUserId);
-  const black = getUserById(game.blackUserId);
+  const white = publicUserById(game.whiteUserId);
+  const black = publicUserById(game.blackUserId);
 
   io.to(userRoom(game.whiteUserId)).emit("match:found", {
     gameId: game.id,
     color: "white",
-    opponent: publicUser(black),
+    opponent: black,
   });
 
   io.to(userRoom(game.blackUserId)).emit("match:found", {
     gameId: game.id,
     color: "black",
-    opponent: publicUser(white),
+    opponent: white,
   });
 }
 
 function createAndStartGame(firstUserId, secondUserId, options = {}) {
-  if (isInGame(firstUserId) || isInGame(secondUserId)) {
+  if ((!isBotUserId(firstUserId) && isInGame(firstUserId)) || (!isBotUserId(secondUserId) && isInGame(secondUserId))) {
     return null;
   }
 
@@ -308,10 +330,15 @@ function createAndStartGame(firstUserId, secondUserId, options = {}) {
     whiteUserId,
     blackUserId,
     fen: chess.fen(),
+    rated: options.rated !== false,
   });
 
-  activeGameByUser.set(whiteUserId, game.id);
-  activeGameByUser.set(blackUserId, game.id);
+  if (!isBotUserId(whiteUserId)) {
+    activeGameByUser.set(whiteUserId, game.id);
+  }
+  if (!isBotUserId(blackUserId)) {
+    activeGameByUser.set(blackUserId, game.id);
+  }
 
   emitMatchFound(game);
   emitGameState(game);
@@ -319,6 +346,59 @@ function createAndStartGame(firstUserId, secondUserId, options = {}) {
   emitPresence();
 
   return game;
+}
+
+function pickBotMove(chess) {
+  const moves = chess.moves({ verbose: true });
+  if (!moves.length) return null;
+
+  const captures = moves.filter((m) => m.captured);
+  const pool = captures.length ? captures : moves;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function scheduleBotMove(game, delayMs = 700) {
+  setTimeout(() => {
+    const fresh = getGameById(game.id);
+    if (!fresh || fresh.status !== "active") return;
+
+    const chess = new Chess(fresh.fenCurrent);
+    const turnUserId = chess.turn() === "w" ? fresh.whiteUserId : fresh.blackUserId;
+    if (!isBotUserId(turnUserId)) return;
+
+    const move = pickBotMove(chess);
+    if (!move) return;
+
+    const applied = chess.move({
+      from: move.from,
+      to: move.to,
+      promotion: move.promotion || "q",
+    });
+    if (!applied) return;
+
+    fresh.moves.push({
+      moveNo: fresh.moves.length + 1,
+      side: applied.color,
+      from: applied.from,
+      to: applied.to,
+      promotion: applied.promotion || null,
+      uci: `${applied.from}${applied.to}${applied.promotion || ""}`,
+      san: applied.san,
+      fenAfter: chess.fen(),
+      createdAt: nowIso(),
+    });
+
+    fresh.fenCurrent = chess.fen();
+    fresh.pgn = chess.pgn();
+    fresh.drawOfferBy = null;
+    touchGame(fresh);
+
+    if (chess.isGameOver()) {
+      finishByBoardState(fresh, chess);
+    } else {
+      emitGameState(fresh);
+    }
+  }, delayMs);
 }
 
 function finishGame(game, { result, finishReason }) {
@@ -373,8 +453,12 @@ function matchmakeQueue() {
 
 function rebuildActiveGameMap() {
   for (const game of listActiveGames()) {
-    activeGameByUser.set(game.whiteUserId, game.id);
-    activeGameByUser.set(game.blackUserId, game.id);
+    if (!isBotUserId(game.whiteUserId)) {
+      activeGameByUser.set(game.whiteUserId, game.id);
+    }
+    if (!isBotUserId(game.blackUserId)) {
+      activeGameByUser.set(game.blackUserId, game.id);
+    }
   }
 }
 
@@ -417,7 +501,7 @@ function buildGlobalLeaderboard() {
 
 function buildDailyLeaderboard(dayKey) {
   const games = listGames()
-    .filter((g) => g.status === "finished" && !!g.finishedAt)
+    .filter((g) => g.status === "finished" && !!g.finishedAt && g.rated !== false)
     .sort((a, b) => String(a.finishedAt).localeCompare(String(b.finishedAt)));
 
   const map = new Map();
@@ -561,6 +645,23 @@ app.get("/api/me", authMiddleware, (req, res) => {
   });
 });
 
+app.post("/api/me/hint-mode", authMiddleware, (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+
+  const hintMode = String(req.body?.hintMode || "").trim();
+  if (hintMode !== "training" && hintMode !== "pro") {
+    return res.status(400).json({ error: "hintMode must be training or pro" });
+  }
+
+  const updated = setUserHintMode(user.id, hintMode);
+  if (!updated) {
+    return res.status(404).json({ error: "User not found" });
+  }
+
+  return res.json({ ok: true, user: publicUser(updated) });
+});
+
 app.get("/api/lobby/waiting", authMiddleware, (_req, res) => {
   res.json({ waiting: getWaitingList() });
 });
@@ -617,6 +718,32 @@ app.post("/api/lobby/queue/join-user", authMiddleware, (req, res) => {
   }
 
   return res.json({ ok: true, gameId: game.id });
+});
+
+app.post("/api/training/bot/start", authMiddleware, (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+
+  if (isInGame(user.id)) {
+    return res.status(409).json({ error: "You are already in game" });
+  }
+
+  const game = createAndStartGame(user.id, TRAINING_BOT_USER_ID, {
+    whiteUserId: user.id,
+    blackUserId: TRAINING_BOT_USER_ID,
+    rated: false,
+  });
+  if (!game) {
+    return res.status(409).json({ error: "Failed to create game" });
+  }
+
+  const chess = new Chess(game.fenCurrent);
+  const turnUserId = chess.turn() === "w" ? game.whiteUserId : game.blackUserId;
+  if (isBotUserId(turnUserId)) {
+    scheduleBotMove(game);
+  }
+
+  return res.json({ ok: true, gameId: game.id, rated: false });
 });
 
 app.post("/api/lobby/queue/leave", authMiddleware, (req, res) => {
@@ -771,7 +898,7 @@ app.get("/api/history", authMiddleware, (req, res) => {
   const games = listGamesByUser(user.id).map((game) => {
     const color = playerColor(game, user.id);
     const opponentId = otherPlayer(game, user.id);
-    const opponent = getUserById(opponentId);
+    const opponent = publicUserById(opponentId);
 
     let perspectiveResult = "ongoing";
     if (game.result === "1/2-1/2") perspectiveResult = "draw";
@@ -781,8 +908,9 @@ app.get("/api/history", authMiddleware, (req, res) => {
     return {
       id: game.id,
       status: game.status,
+      rated: game.rated !== false,
       color,
-      opponent: publicUser(opponent),
+      opponent,
       result: game.result,
       perspectiveResult,
       finishReason: game.finishReason,
@@ -946,6 +1074,10 @@ io.on("connection", (socket) => {
       finishByBoardState(game, chess);
     } else {
       emitGameState(game);
+      const nextTurnUserId = chess.turn() === "w" ? game.whiteUserId : game.blackUserId;
+      if (isBotUserId(nextTurnUserId)) {
+        scheduleBotMove(game);
+      }
     }
   });
 
@@ -956,14 +1088,18 @@ io.on("connection", (socket) => {
       return;
     }
 
+    const opponentId = otherPlayer(game, userId);
+    if (isBotUserId(opponentId)) {
+      socket.emit("error:message", { code: "unsupported_vs_bot", message: "Draw offer is disabled vs bot" });
+      return;
+    }
+
     if (game.drawOfferBy && game.drawOfferBy !== userId) {
       return;
     }
 
     game.drawOfferBy = userId;
     touchGame(game);
-
-    const opponentId = otherPlayer(game, userId);
     io.to(userRoom(opponentId)).emit("game:draw:offer", {
       gameId: game.id,
       fromUser: publicUser(getUserById(userId)),
@@ -1015,6 +1151,22 @@ io.on("connection", (socket) => {
       return;
     }
 
+    const opponentId = otherPlayer(game, userId);
+    if (isBotUserId(opponentId)) {
+      const newGame = createAndStartGame(userId, TRAINING_BOT_USER_ID, {
+        whiteUserId: userId,
+        blackUserId: TRAINING_BOT_USER_ID,
+        rated: false,
+      });
+      if (newGame) {
+        io.to(userRoom(userId)).emit("game:rematch:accepted", {
+          fromGameId: game.id,
+          newGameId: newGame.id,
+        });
+      }
+      return;
+    }
+
     if (!Array.isArray(game.rematchBy)) {
       game.rematchBy = [];
     }
@@ -1023,8 +1175,6 @@ io.on("connection", (socket) => {
       game.rematchBy.push(userId);
       touchGame(game);
     }
-
-    const opponentId = otherPlayer(game, userId);
 
     if (game.rematchBy.includes(opponentId)) {
       const newGame = createAndStartGame(game.whiteUserId, game.blackUserId, {
@@ -1080,3 +1230,4 @@ server.listen(PORT, HOST, () => {
   console.log(`Chess Mini App ready — ${base}`);
   console.log(`  Timezone: ${APP_TIMEZONE} | Dev auth: ${ALLOW_DEV_AUTH ? "on" : "off"} | Telegram: ${TELEGRAM_BOT_TOKEN ? "ok" : "not set"}`);
 });
+

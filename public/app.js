@@ -118,6 +118,7 @@ const refs = {
   leadersTable: document.getElementById("leadersTable"),
   historyList: document.getElementById("historyList"),
   joinQueueBtn: document.getElementById("joinQueueBtn"),
+  startBotGameBtn: document.getElementById("startBotGameBtn"),
   leaveQueueBtn: document.getElementById("leaveQueueBtn"),
   offerDrawBtn: document.getElementById("offerDrawBtn"),
   resignBtn: document.getElementById("resignBtn"),
@@ -246,6 +247,10 @@ function isSquareLight(square) {
 function isMyTurn(game) {
   if (!game || game.status !== "active") return false;
   return game.viewerColor === game.turnColor;
+}
+
+function isProMode() {
+  return state.me?.hintMode === "pro";
 }
 
 function renderWaiting() {
@@ -406,6 +411,7 @@ function renderGame() {
   const legalMoves = game.legalMoves || {};
   const selected = state.selectedSquare;
   const targetSquares = selected && legalMoves[selected] ? legalMoves[selected].map((m) => m.to) : [];
+  const showHints = !isProMode();
 
   refs.board.innerHTML = "";
 
@@ -414,11 +420,11 @@ function renderGame() {
     btn.className = `square ${isSquareLight(square) ? "light" : "dark"}`;
     btn.dataset.square = square;
 
-    if (selected === square) {
+    if (showHints && selected === square) {
       btn.classList.add("selected");
     }
 
-    if (targetSquares.includes(square)) {
+    if (showHints && targetSquares.includes(square)) {
       btn.classList.add("target");
     }
 
@@ -426,7 +432,7 @@ function renderGame() {
     if (piece) {
       btn.textContent = PIECES[piece] || "";
       btn.classList.add(piece === piece.toUpperCase() ? "piece-white" : "piece-black");
-    } else if (targetSquares.includes(square)) {
+    } else if (showHints && targetSquares.includes(square)) {
       const hint = document.createElement("span");
       hint.className = "hint";
       btn.appendChild(hint);
@@ -465,11 +471,51 @@ function renderProfile() {
     ["Очки", state.stats.pointsTotal],
   ];
 
+  const mode = isProMode() ? "pro" : "training";
   refs.profileStats.innerHTML = rows
     .map(([label, value]) => {
       return `<div class="stat-card"><div class="muted">${label}</div><div class="stat-value">${value}</div></div>`;
     })
-    .join("");
+    .join("")
+    + `
+      <div class="stat-card" style="grid-column: 1 / -1;">
+        <div class="muted">Режим игры</div>
+        <div class="actions-row" style="margin-top:8px;">
+          <button id="modeTrainingBtn" class="${mode === "training" ? "primary" : "ghost"}" type="button">Обучающий</button>
+          <button id="modeProBtn" class="${mode === "pro" ? "primary" : "ghost"}" type="button">PRO</button>
+        </div>
+      </div>
+    `;
+
+  const trainingBtn = document.getElementById("modeTrainingBtn");
+  const proBtn = document.getElementById("modeProBtn");
+  if (trainingBtn) {
+    trainingBtn.onclick = () => setHintMode("training");
+  }
+  if (proBtn) {
+    proBtn.onclick = () => setHintMode("pro");
+  }
+}
+
+async function setHintMode(hintMode) {
+  if (hintMode !== "training" && hintMode !== "pro") return;
+  if (!state.me) return;
+  if (state.me.hintMode === hintMode) return;
+
+  try {
+    const data = await api("/api/me/hint-mode", {
+      method: "POST",
+      body: { hintMode },
+    });
+    if (data?.user) {
+      state.me = data.user;
+      renderProfile();
+      renderGame();
+      showNotice(hintMode === "pro" ? "Режим PRO включен" : "Обучающий режим включен");
+    }
+  } catch (err) {
+    showNotice(err.message);
+  }
 }
 
 function renderLeaders() {
@@ -776,6 +822,18 @@ async function joinQueue() {
   }
 }
 
+async function startBotTrainingGame() {
+  try {
+    const data = await api("/api/training/bot/start", { method: "POST" });
+    if (data?.gameId) {
+      await openGameFromHistory(data.gameId);
+    }
+    showNotice("Training game vs bot started");
+  } catch (err) {
+    showNotice(err.message);
+  }
+}
+
 async function leaveQueue() {
   try {
     await api("/api/lobby/queue/leave", { method: "POST" });
@@ -805,6 +863,7 @@ function wireEvents() {
   });
 
   refs.joinQueueBtn.addEventListener("click", joinQueue);
+  refs.startBotGameBtn.addEventListener("click", startBotTrainingGame);
   refs.leaveQueueBtn.addEventListener("click", leaveQueue);
 
   refs.offerDrawBtn.addEventListener("click", () => {

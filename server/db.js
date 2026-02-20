@@ -39,6 +39,23 @@ function initDb() {
   if (!db.stats || typeof db.stats !== "object") db.stats = {};
   if (!Array.isArray(db.games)) db.games = [];
   if (!Array.isArray(db.tables)) db.tables = [];
+
+  let changed = false;
+  for (const user of db.users) {
+    if (!user || typeof user !== "object") continue;
+    if (user.hintMode !== "training" && user.hintMode !== "pro") {
+      user.hintMode = "training";
+      changed = true;
+    }
+  }
+  for (const game of db.games) {
+    if (!game || typeof game !== "object") continue;
+    if (typeof game.rated !== "boolean") {
+      game.rated = true;
+      changed = true;
+    }
+  }
+  if (changed) saveDb();
 }
 
 function getDb() {
@@ -93,6 +110,9 @@ function upsertTelegramUser({ tgId, username, displayName, avatarUrl }) {
     existing.username = username || existing.username || null;
     existing.displayName = sanitizeName(displayName || existing.displayName);
     existing.avatarUrl = avatarUrl || existing.avatarUrl || null;
+    if (existing.hintMode !== "training" && existing.hintMode !== "pro") {
+      existing.hintMode = "training";
+    }
     existing.updatedAt = nowIso();
     ensureStats(existing.id);
     saveDb();
@@ -105,6 +125,7 @@ function upsertTelegramUser({ tgId, username, displayName, avatarUrl }) {
     username: username || null,
     displayName: sanitizeName(displayName),
     avatarUrl: avatarUrl || null,
+    hintMode: "training",
     createdAt: nowIso(),
     updatedAt: nowIso(),
   };
@@ -123,6 +144,9 @@ function upsertDevUser(displayName) {
 
   if (existing) {
     existing.displayName = normalized;
+    if (existing.hintMode !== "training" && existing.hintMode !== "pro") {
+      existing.hintMode = "training";
+    }
     existing.updatedAt = nowIso();
     ensureStats(existing.id);
     saveDb();
@@ -135,6 +159,7 @@ function upsertDevUser(displayName) {
     username: null,
     displayName: normalized,
     avatarUrl: null,
+    hintMode: "training",
     createdAt: nowIso(),
     updatedAt: nowIso(),
   };
@@ -209,11 +234,23 @@ function removeOpenTableByOwner(ownerUserId) {
   return changed;
 }
 
+function setUserHintMode(userId, hintMode) {
+  if (hintMode !== "training" && hintMode !== "pro") {
+    return null;
+  }
+  const user = getUserById(userId);
+  if (!user) return null;
+  user.hintMode = hintMode;
+  user.updatedAt = nowIso();
+  saveDb();
+  return user;
+}
+
 function listActiveGames() {
   return getDb().games.filter((g) => g.status === "active");
 }
 
-function createGame({ whiteUserId, blackUserId, fen }) {
+function createGame({ whiteUserId, blackUserId, fen, rated = true }) {
   const dbRef = getDb();
   const now = nowIso();
 
@@ -232,6 +269,7 @@ function createGame({ whiteUserId, blackUserId, fen }) {
     drawOfferBy: null,
     rematchBy: [],
     statsApplied: false,
+    rated: !!rated,
     createdAt: now,
     updatedAt: now,
   };
@@ -248,6 +286,12 @@ function touchGame(game) {
 
 function applyResultToStats(game) {
   if (game.statsApplied) return;
+  if (game.rated === false) {
+    game.statsApplied = true;
+    game.updatedAt = nowIso();
+    saveDb();
+    return;
+  }
 
   const whiteStats = ensureStats(game.whiteUserId);
   const blackStats = ensureStats(game.blackUserId);
@@ -296,6 +340,7 @@ module.exports = {
   getOpenTableByOwner,
   createOpenTable,
   removeOpenTableByOwner,
+  setUserHintMode,
   listActiveGames,
   createGame,
   touchGame,
