@@ -415,10 +415,25 @@ function renderGame() {
 
   refs.board.innerHTML = "";
 
-  for (const square of squareOrder(game.viewerColor)) {
+  const squares = squareOrder(game.viewerColor);
+  const leftFile = game.viewerColor === "black" ? "h" : "a";
+  const bottomRank = game.viewerColor === "black" ? "8" : "1";
+
+  for (const square of squares) {
     const btn = document.createElement("button");
     btn.className = `square ${isSquareLight(square) ? "light" : "dark"}`;
     btn.dataset.square = square;
+
+    const file = square[0];
+    const rank = square[1];
+    if (file === leftFile) {
+      btn.classList.add("rank-label");
+      btn.dataset.rankLabel = rank;
+    }
+    if (rank === bottomRank) {
+      btn.classList.add("file-label");
+      btn.dataset.fileLabel = file;
+    }
 
     if (showHints && selected === square) {
       btn.classList.add("selected");

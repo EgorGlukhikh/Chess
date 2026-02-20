@@ -56,6 +56,7 @@ function initDb() {
     }
   }
   if (changed) saveDb();
+  rebuildStatsFromFinishedRatedGames();
 }
 
 function getDb() {
@@ -284,6 +285,60 @@ function touchGame(game) {
   saveDb();
 }
 
+function rebuildStatsFromFinishedRatedGames() {
+  const dbRef = getDb();
+  const now = nowIso();
+  const nextStats = {};
+
+  function ensure(userId) {
+    if (!nextStats[userId]) {
+      nextStats[userId] = {
+        userId,
+        wins: 0,
+        losses: 0,
+        draws: 0,
+        gamesTotal: 0,
+        pointsTotal: 0,
+        updatedAt: now,
+      };
+    }
+    return nextStats[userId];
+  }
+
+  for (const user of dbRef.users) {
+    if (!user || !user.id) continue;
+    ensure(user.id);
+  }
+
+  for (const game of dbRef.games) {
+    if (!game || game.status !== "finished" || game.rated === false) continue;
+
+    const white = ensure(game.whiteUserId);
+    const black = ensure(game.blackUserId);
+
+    white.gamesTotal += 1;
+    black.gamesTotal += 1;
+
+    if (game.result === "1-0") {
+      white.wins += 1;
+      black.losses += 1;
+      white.pointsTotal += 1;
+    } else if (game.result === "0-1") {
+      black.wins += 1;
+      white.losses += 1;
+      black.pointsTotal += 1;
+    } else if (game.result === "1/2-1/2") {
+      white.draws += 1;
+      black.draws += 1;
+      white.pointsTotal += 0.5;
+      black.pointsTotal += 0.5;
+    }
+  }
+
+  dbRef.stats = nextStats;
+  saveDb();
+}
+
 function applyResultToStats(game) {
   if (game.statsApplied) return;
   if (game.rated === false) {
@@ -302,16 +357,16 @@ function applyResultToStats(game) {
   if (game.result === "1-0") {
     whiteStats.wins += 1;
     blackStats.losses += 1;
-    whiteStats.pointsTotal += 3;
+    whiteStats.pointsTotal += 1;
   } else if (game.result === "0-1") {
     blackStats.wins += 1;
     whiteStats.losses += 1;
-    blackStats.pointsTotal += 3;
+    blackStats.pointsTotal += 1;
   } else if (game.result === "1/2-1/2") {
     whiteStats.draws += 1;
     blackStats.draws += 1;
-    whiteStats.pointsTotal += 1;
-    blackStats.pointsTotal += 1;
+    whiteStats.pointsTotal += 0.5;
+    blackStats.pointsTotal += 0.5;
   }
 
   const now = nowIso();

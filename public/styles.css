@@ -452,6 +452,7 @@ button.danger {
   justify-content: center;
   font-size: 28px;
   line-height: 1;
+  position: relative;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
   color: #111;
@@ -494,6 +495,38 @@ button.danger {
   height: 14px;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.28);
+}
+
+.square.rank-label::before,
+.square.file-label::after {
+  position: absolute;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+.square.rank-label::before {
+  content: attr(data-rank-label);
+  top: 3px;
+  left: 4px;
+}
+
+.square.file-label::after {
+  content: attr(data-file-label);
+  right: 4px;
+  bottom: 3px;
+}
+
+.square.light.rank-label::before,
+.square.light.file-label::after {
+  color: rgba(27, 34, 39, 0.72);
+}
+
+.square.dark.rank-label::before,
+.square.dark.file-label::after {
+  color: rgba(238, 243, 247, 0.85);
 }
 
 .moves {

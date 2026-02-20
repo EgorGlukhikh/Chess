@@ -528,19 +528,19 @@ function buildDailyLeaderboard(dayKey) {
 
     if (game.result === "1-0") {
       white.wins += 1;
-      white.points += 3;
+      white.points += 1;
       white.lastPointGainAt = game.finishedAt;
       black.losses += 1;
     } else if (game.result === "0-1") {
       black.wins += 1;
-      black.points += 3;
+      black.points += 1;
       black.lastPointGainAt = game.finishedAt;
       white.losses += 1;
     } else if (game.result === "1/2-1/2") {
       white.draws += 1;
       black.draws += 1;
-      white.points += 1;
-      black.points += 1;
+      white.points += 0.5;
+      black.points += 0.5;
       white.lastPointGainAt = game.finishedAt;
       black.lastPointGainAt = game.finishedAt;
     }
