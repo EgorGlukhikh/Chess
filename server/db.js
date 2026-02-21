@@ -6,6 +6,10 @@ const DATA_DIR = path.join(__dirname, "..", "data");
 const DATA_FILE = path.join(DATA_DIR, "db.json");
 
 const EMPTY_DB = {
+  meta: {
+    ratingSystemVersion: 2,
+    ratingSystem: "tournament_1_0.5_0",
+  },
   users: [],
   stats: {},
   games: [],
@@ -41,6 +45,10 @@ function initDb() {
   if (!Array.isArray(db.tables)) db.tables = [];
 
   let changed = false;
+  if (!db.meta || typeof db.meta !== "object") {
+    db.meta = {};
+    changed = true;
+  }
   for (const user of db.users) {
     if (!user || typeof user !== "object") continue;
     if (user.hintMode !== "training" && user.hintMode !== "pro") {
@@ -55,8 +63,16 @@ function initDb() {
       changed = true;
     }
   }
+  // One-time migration to tournament scoring (1 / 0.5 / 0).
+  // Do not recalculate on every boot: it can make rating look unstable on deploys.
+  if (db.meta.ratingSystemVersion !== 2) {
+    rebuildStatsFromFinishedRatedGames();
+    db.meta.ratingSystemVersion = 2;
+    db.meta.ratingSystem = "tournament_1_0.5_0";
+    changed = true;
+  }
+
   if (changed) saveDb();
-  rebuildStatsFromFinishedRatedGames();
 }
 
 function getDb() {
