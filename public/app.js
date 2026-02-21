@@ -15,6 +15,8 @@ const state = {
   noticeTimer: null,
   lobbyPollTimer: null,
   gamePollTimer: null,
+  skin: "classic",
+  bannerTimer: null,
 };
 
 /** Telegram Mini App: доступен только при открытии из бота */
@@ -23,6 +25,25 @@ function getTelegramWebApp() {
 }
 
 const THEME_KEY = "chess_theme";
+const SKIN_KEY = "chess_skin";
+const SKINS = {
+  classic: {
+    title: "Chess Mini App",
+    banners: [
+      "Классический режим: спокойная турнирная атмосфера",
+      "Создавайте стол и ждите соперника в удобное время",
+      "Тренировки с ботом не влияют на рейтинг",
+    ],
+  },
+  feb23: {
+    title: "23 февраля",
+    banners: [
+      "С праздником! Сила стратегии и характер победителя",
+      "Боевой настрой: защита, контратака и точный расчет",
+      "Праздничный скин активен. Играйте и побеждайте",
+    ],
+  },
+};
 
 function applyTheme(theme) {
   const next = theme === "dark" ? "dark" : "light";
@@ -52,6 +73,44 @@ function initTheme() {
       if (!localStorage.getItem(THEME_KEY)) applyTheme(tg.colorScheme === "dark" ? "dark" : "light");
     });
   }
+}
+
+function applySkin(skinId) {
+  const next = SKINS[skinId] ? skinId : "classic";
+  state.skin = next;
+  document.documentElement.setAttribute("data-skin", next);
+  try {
+    localStorage.setItem(SKIN_KEY, next);
+  } catch (_) {}
+  renderBanner(0);
+}
+
+function initSkin() {
+  const saved = localStorage.getItem(SKIN_KEY);
+  applySkin(saved || "classic");
+  startBannerRotation();
+}
+
+function renderBanner(step = null) {
+  if (!refs.skinBannerTitle || !refs.skinBannerText) return;
+  const skin = SKINS[state.skin] || SKINS.classic;
+  const messages = skin.banners || [];
+  const len = Math.max(1, messages.length);
+  const index = typeof step === "number"
+    ? step % len
+    : Number(refs.skinBannerText.dataset.bannerIndex || "0") % len;
+
+  refs.skinBannerTitle.textContent = skin.title;
+  refs.skinBannerText.textContent = messages[index] || "";
+  refs.skinBannerText.dataset.bannerIndex = String((index + 1) % len);
+}
+
+function startBannerRotation() {
+  if (state.bannerTimer) {
+    clearInterval(state.bannerTimer);
+  }
+  renderBanner(0);
+  state.bannerTimer = setInterval(() => renderBanner(), 5500);
 }
 
 function initTelegramWebApp() {
@@ -96,6 +155,8 @@ const refs = {
   devName: document.getElementById("devName"),
   devLoginBtn: document.getElementById("devLoginBtn"),
   whoami: document.getElementById("whoami"),
+  skinBannerTitle: document.getElementById("skinBannerTitle"),
+  skinBannerText: document.getElementById("skinBannerText"),
   connectionBadge: document.getElementById("connectionBadge"),
   themeToggle: document.getElementById("themeToggle"),
   waitingList: document.getElementById("waitingList"),
@@ -478,19 +539,21 @@ function renderGame() {
 
 function renderProfile() {
   if (!state.stats) {
-    refs.profileStats.innerHTML = '<div class="muted">Нет данных</div>';
+    refs.profileStats.innerHTML = '<div class="muted">No data</div>';
     return;
   }
 
   const rows = [
-    ["Победы", state.stats.wins],
-    ["Поражения", state.stats.losses],
-    ["Ничьи", state.stats.draws],
-    ["Всего партий", state.stats.gamesTotal],
-    ["Очки", state.stats.pointsTotal],
+    ["Wins", state.stats.wins],
+    ["Losses", state.stats.losses],
+    ["Draws", state.stats.draws],
+    ["Games total", state.stats.gamesTotal],
+    ["Points", state.stats.pointsTotal],
   ];
 
   const mode = isProMode() ? "pro" : "training";
+  const skin = SKINS[state.skin] ? state.skin : "classic";
+
   refs.profileStats.innerHTML = rows
     .map(([label, value]) => {
       return `<div class="stat-card"><div class="muted">${label}</div><div class="stat-value">${value}</div></div>`;
@@ -498,22 +561,30 @@ function renderProfile() {
     .join("")
     + `
       <div class="stat-card" style="grid-column: 1 / -1;">
-        <div class="muted">Режим игры</div>
+        <div class="muted">Game mode</div>
         <div class="actions-row" style="margin-top:8px;">
-          <button id="modeTrainingBtn" class="${mode === "training" ? "primary" : "ghost"}" type="button">Обучающий</button>
+          <button id="modeTrainingBtn" class="${mode === "training" ? "primary" : "ghost"}" type="button">Training</button>
           <button id="modeProBtn" class="${mode === "pro" ? "primary" : "ghost"}" type="button">PRO</button>
+        </div>
+      </div>
+      <div class="stat-card" style="grid-column: 1 / -1;">
+        <div class="muted">Skin</div>
+        <div class="actions-row" style="margin-top:8px;">
+          <button id="skinClassicBtn" class="${skin === "classic" ? "primary" : "ghost"}" type="button">Classic</button>
+          <button id="skinFeb23Btn" class="${skin === "feb23" ? "primary" : "ghost"}" type="button">23 Feb</button>
         </div>
       </div>
     `;
 
   const trainingBtn = document.getElementById("modeTrainingBtn");
   const proBtn = document.getElementById("modeProBtn");
-  if (trainingBtn) {
-    trainingBtn.onclick = () => setHintMode("training");
-  }
-  if (proBtn) {
-    proBtn.onclick = () => setHintMode("pro");
-  }
+  if (trainingBtn) trainingBtn.onclick = () => setHintMode("training");
+  if (proBtn) proBtn.onclick = () => setHintMode("pro");
+
+  const skinClassicBtn = document.getElementById("skinClassicBtn");
+  const skinFeb23Btn = document.getElementById("skinFeb23Btn");
+  if (skinClassicBtn) skinClassicBtn.onclick = () => setSkin("classic");
+  if (skinFeb23Btn) skinFeb23Btn.onclick = () => setSkin("feb23");
 }
 
 async function setHintMode(hintMode) {
@@ -530,11 +601,19 @@ async function setHintMode(hintMode) {
       state.me = data.user;
       renderProfile();
       renderGame();
-      showNotice(hintMode === "pro" ? "Режим PRO включен" : "Обучающий режим включен");
+      showNotice(hintMode === "pro" ? "PRO mode enabled" : "Training mode enabled");
     }
   } catch (err) {
     showNotice(err.message);
   }
+}
+
+function setSkin(skinId) {
+  if (!SKINS[skinId]) return;
+  if (state.skin === skinId) return;
+  applySkin(skinId);
+  renderProfile();
+  showNotice(skinId === "feb23" ? "23 Feb skin enabled" : "Classic skin enabled");
 }
 
 function renderLeaders() {
@@ -1030,6 +1109,7 @@ function statusLabel(status) {
 }
 
 async function bootstrap() {
+  initSkin();
   initTelegramWebApp();
   initTheme();
 
