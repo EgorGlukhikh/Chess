@@ -26,6 +26,7 @@ function getTelegramWebApp() {
 
 const THEME_KEY = "chess_theme";
 const SKIN_KEY = "chess_skin";
+const SKIN_ROLLOUT_KEY = "skin_rollout_2026_02_23";
 const SKINS = {
   classic: {
     title: "Chess Mini App",
@@ -86,8 +87,16 @@ function applySkin(skinId) {
 }
 
 function initSkin() {
-  const saved = localStorage.getItem(SKIN_KEY);
-  applySkin(saved || "classic");
+  const rolloutApplied = localStorage.getItem(SKIN_ROLLOUT_KEY) === "1";
+  if (!rolloutApplied) {
+    applySkin("feb23");
+    try {
+      localStorage.setItem(SKIN_ROLLOUT_KEY, "1");
+    } catch (_) {}
+  } else {
+    const saved = localStorage.getItem(SKIN_KEY);
+    applySkin(saved || "feb23");
+  }
   startBannerRotation();
 }
 
