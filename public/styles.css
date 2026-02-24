@@ -47,6 +47,14 @@
   --row-me: rgba(160, 58, 47, 0.18);
 }
 
+[data-skin="mar8"] {
+  --accent: #b44f86;
+  --accent-2: #3f8c63;
+  --board-light: #f4d6e5;
+  --board-dark: #7ea987;
+  --row-me: rgba(180, 79, 134, 0.15);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -78,6 +86,15 @@ html[data-skin="feb23"] body {
     radial-gradient(180px 90px at 30% 72%, rgba(87, 74, 50, 0.42), transparent 66%),
     radial-gradient(140px 80px at 86% 84%, rgba(45, 56, 38, 0.44), transparent 62%),
     linear-gradient(165deg, #d4c49a 0%, #9eae84 42%, #7b8b68 100%);
+}
+
+html[data-skin="mar8"] body {
+  background:
+    radial-gradient(180px 95px at 16% 20%, rgba(255, 186, 219, 0.36), transparent 68%),
+    radial-gradient(180px 95px at 84% 24%, rgba(177, 239, 196, 0.34), transparent 70%),
+    radial-gradient(190px 98px at 30% 78%, rgba(245, 164, 210, 0.28), transparent 70%),
+    radial-gradient(160px 88px at 82% 82%, rgba(132, 206, 166, 0.32), transparent 66%),
+    linear-gradient(165deg, #f7edf2 0%, #d7f0df 48%, #c6e9ce 100%);
 }
 
 .screen {
@@ -241,6 +258,32 @@ html[data-skin="feb23"] .skin-banner::after {
   font-size: 14px;
   letter-spacing: 2px;
   opacity: 0.92;
+}
+
+html[data-skin="mar8"] .skin-banner {
+  border-color: #d3b2c4;
+  background:
+    linear-gradient(125deg, rgba(247, 216, 233, 0.95), rgba(212, 240, 223, 0.94)),
+    radial-gradient(160px 80px at 14% 18%, rgba(205, 115, 167, 0.2), transparent 70%);
+}
+
+html[data-skin="mar8"] .skin-banner-title {
+  color: #6a2f53;
+}
+
+html[data-skin="mar8"] .skin-banner-text {
+  color: #3f6f54;
+}
+
+html[data-skin="mar8"] .skin-banner::after {
+  content: "✿   ✿   ✿";
+  position: absolute;
+  right: 12px;
+  top: 10px;
+  color: #b44f86;
+  font-size: 14px;
+  letter-spacing: 2px;
+  opacity: 0.9;
 }
 
 .header-left {
@@ -568,19 +611,13 @@ html[data-skin="feb23"] .skin-banner::after {
 }
 
 .square.piece-white {
-  color: #fff;
-  text-shadow:
-    0 1px 0 rgba(0, 0, 0, 0.75),
-    0 -1px 0 rgba(0, 0, 0, 0.75),
-    1px 0 0 rgba(0, 0, 0, 0.75),
-    -1px 0 0 rgba(0, 0, 0, 0.75);
+  color: #ffffff;
+  text-shadow: none;
 }
 
 .square.piece-black {
-  color: #111;
-  text-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.35),
-    1px 0 0 rgba(255, 255, 255, 0.25);
+  color: #111111;
+  text-shadow: none;
 }
 
 .square.light {

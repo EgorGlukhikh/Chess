@@ -12,6 +12,8 @@ const state = {
   leadersMode: "global",
   leadersRows: [],
   winnersRows: [],
+  isAdmin: false,
+  adminGamesLog: [],
   currentView: "lobby",
   noticeTimer: null,
   lobbyPollTimer: null,
@@ -44,6 +46,14 @@ const SKINS = {
       "С праздником! Сила стратегии и характер победителя",
       "Боевой настрой: защита, контратака и точный расчет",
       "Праздничный скин активен. Играйте и побеждайте",
+    ],
+  },
+  mar8: {
+    title: "8 March",
+    banners: [
+      "Spring mode: calm games and flexible pace",
+      "Green and pink palette is active",
+      "You can add more seasonal themes in profile",
     ],
   },
 };
@@ -233,6 +243,9 @@ function setView(view) {
   });
 
   if (view === "lobby") renderLobbyLeaders();
+  if (view === "profile" && state.isAdmin && !state.adminGamesLog.length) {
+    loadAdminGamesLog().catch(() => {});
+  }
 
   const tg = getTelegramWebApp();
   if (tg?.BackButton) {
@@ -339,6 +352,10 @@ function formatDayLabel(day) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day || ""));
   if (!m) return escapeHtml(String(day || ""));
   return `${m[3]}.${m[2]}`;
+}
+
+function escapeAttr(str) {
+  return escapeHtml(str).replaceAll("`", "&#096;");
 }
 
 function renderWaiting() {
@@ -596,8 +613,18 @@ function renderProfile() {
         <div class="actions-row" style="margin-top:8px;">
           <button id="skinClassicBtn" class="${skin === "classic" ? "primary" : "ghost"}" type="button">Classic</button>
           <button id="skinFeb23Btn" class="${skin === "feb23" ? "primary" : "ghost"}" type="button">23 Feb</button>
+          <button id="skinMar8Btn" class="${skin === "mar8" ? "primary" : "ghost"}" type="button">8 March</button>
         </div>
       </div>
+      ${state.isAdmin ? `
+      <div class="stat-card" style="grid-column: 1 / -1;">
+        <div class="muted">Admin: game log</div>
+        <div class="actions-row" style="margin-top:8px;">
+          <button id="loadAdminLogBtn" class="ghost" type="button">Load log</button>
+        </div>
+        <div id="adminGamesLog" class="list" style="margin-top:8px;"></div>
+      </div>
+      ` : ""}
     `;
 
   const trainingBtn = document.getElementById("modeTrainingBtn");
@@ -607,8 +634,16 @@ function renderProfile() {
 
   const skinClassicBtn = document.getElementById("skinClassicBtn");
   const skinFeb23Btn = document.getElementById("skinFeb23Btn");
+  const skinMar8Btn = document.getElementById("skinMar8Btn");
   if (skinClassicBtn) skinClassicBtn.onclick = () => setSkin("classic");
   if (skinFeb23Btn) skinFeb23Btn.onclick = () => setSkin("feb23");
+  if (skinMar8Btn) skinMar8Btn.onclick = () => setSkin("mar8");
+
+  if (state.isAdmin) {
+    const loadAdminLogBtn = document.getElementById("loadAdminLogBtn");
+    if (loadAdminLogBtn) loadAdminLogBtn.onclick = () => loadAdminGamesLog().catch((err) => showNotice(err.message));
+    renderAdminGamesLog();
+  }
 }
 
 async function setHintMode(hintMode) {
@@ -637,7 +672,37 @@ function setSkin(skinId) {
   if (state.skin === skinId) return;
   applySkin(skinId);
   renderProfile();
-  showNotice(skinId === "feb23" ? "23 Feb skin enabled" : "Classic skin enabled");
+  const labels = {
+    classic: "Classic skin enabled",
+    feb23: "23 Feb skin enabled",
+    mar8: "8 March skin enabled",
+  };
+  showNotice(labels[skinId] || "Skin enabled");
+}
+
+function renderAdminGamesLog() {
+  const box = document.getElementById("adminGamesLog");
+  if (!box) return;
+
+  if (!state.adminGamesLog.length) {
+    box.innerHTML = '<div class="muted">No games in log</div>';
+    return;
+  }
+
+  box.innerHTML = state.adminGamesLog.map((g) => {
+    const white = userNameHtml(g.white, "White");
+    const black = userNameHtml(g.black, "Black");
+    const started = g.startedAt ? new Date(g.startedAt).toLocaleString() : "-";
+    const finished = g.finishedAt ? new Date(g.finishedAt).toLocaleString() : "-";
+    return `<div class="list-item">
+      <div>
+        <div><strong>${white}</strong> vs <strong>${black}</strong></div>
+        <div class="meta">status: ${escapeHtml(g.status)} | result: ${escapeHtml(g.result || "-")} | rated: ${g.rated ? "yes" : "no"}</div>
+        <div class="meta">start: ${escapeHtml(started)} | end: ${escapeHtml(finished)} | duration: ${escapeHtml(g.durationText || "-")} | moves: ${escapeHtml(String(g.movesCount || 0))}</div>
+      </div>
+      <button class="ghost" type="button" onclick="navigator.clipboard?.writeText('${escapeAttr(g.id)}')">ID</button>
+    </div>`;
+  }).join("");
 }
 
 function renderLeaders() {
@@ -806,6 +871,7 @@ async function refreshMe() {
   const data = await api("/api/me");
   state.me = data.user;
   state.stats = data.stats;
+  state.isAdmin = !!data.isAdmin;
   refs.whoami.textContent = state.me.displayName + " · " + statusLabel(data.status);
   renderProfile();
 }
@@ -820,6 +886,13 @@ async function loadHistory() {
   const data = await api("/api/history");
   state.history = data.games || [];
   renderHistory();
+}
+
+async function loadAdminGamesLog() {
+  if (!state.isAdmin) return;
+  const data = await api("/api/admin/games-log?limit=120");
+  state.adminGamesLog = data.games || [];
+  renderAdminGamesLog();
 }
 
 async function loadGlobalLeaders() {

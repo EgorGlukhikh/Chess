@@ -39,6 +39,18 @@ const JWT_SECRET = process.env.JWT_SECRET || "change-me";
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const APP_TIMEZONE = process.env.APP_TIMEZONE || "Europe/Moscow";
 const ALLOW_DEV_AUTH = String(process.env.ALLOW_DEV_AUTH || "true").toLowerCase() === "true";
+const ADMIN_TG_IDS = new Set(
+  String(process.env.ADMIN_TG_IDS || "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean),
+);
+const ADMIN_USER_IDS = new Set(
+  String(process.env.ADMIN_USER_IDS || "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean),
+);
 const TRAINING_BOT_USER_ID = "bot:trainer";
 
 if (JWT_SECRET === "change-me" && process.env.NODE_ENV === "production") {
@@ -487,6 +499,23 @@ function requireUser(req, res) {
   return user;
 }
 
+function isAdminUser(user) {
+  if (!user) return false;
+  if (ADMIN_USER_IDS.has(String(user.id || "").trim())) return true;
+  if (ADMIN_TG_IDS.has(String(user.tgId || "").trim())) return true;
+  return false;
+}
+
+function formatDuration(ms) {
+  const totalSeconds = Math.max(0, Math.round(Number(ms || 0) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
 function buildGlobalLeaderboard() {
   const dbRef = getDb();
   const rows = Object.values(dbRef.stats).map((stats) => {
@@ -711,6 +740,52 @@ app.get("/api/me", authMiddleware, (req, res) => {
     user: publicUser(user),
     stats,
     status: getPresenceStatus(user.id),
+    isAdmin: isAdminUser(user),
+  });
+});
+
+app.get("/api/admin/games-log", authMiddleware, (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!isAdminUser(user)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const limitRaw = Number(req.query.limit);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 120;
+
+  const games = listGames()
+    .slice()
+    .sort((a, b) => String(b.startedAt || "").localeCompare(String(a.startedAt || "")))
+    .slice(0, limit)
+    .map((game) => {
+      const startedAt = game.startedAt || null;
+      const finishedAt = game.finishedAt || null;
+      const startMs = startedAt ? new Date(startedAt).getTime() : NaN;
+      const endMs = finishedAt ? new Date(finishedAt).getTime() : NaN;
+      const durationMs = Number.isFinite(startMs) && Number.isFinite(endMs) && endMs >= startMs
+        ? endMs - startMs
+        : null;
+
+      return {
+        id: game.id,
+        rated: game.rated !== false,
+        status: game.status,
+        result: game.result,
+        finishReason: game.finishReason,
+        startedAt,
+        finishedAt,
+        durationMs,
+        durationText: durationMs == null ? "-" : formatDuration(durationMs),
+        movesCount: Array.isArray(game.moves) ? game.moves.length : 0,
+        white: publicUserById(game.whiteUserId),
+        black: publicUserById(game.blackUserId),
+      };
+    });
+
+  return res.json({
+    timezone: APP_TIMEZONE,
+    games,
   });
 });
 
