@@ -85,11 +85,26 @@ function toDateKey(iso, timeZone) {
   }).format(new Date(iso));
 }
 
+function telegramLinkByUser(user) {
+  if (!user) return null;
+  const username = String(user.username || "").trim().replace(/^@+/, "");
+  if (username) {
+    return `https://t.me/${username}`;
+  }
+
+  const tgIdRaw = String(user.tgId || "").trim();
+  if (/^\d+$/.test(tgIdRaw)) {
+    return `tg://user?id=${tgIdRaw}`;
+  }
+  return null;
+}
+
 function publicUser(user) {
   if (!user) return null;
   return {
     id: user.id,
     username: user.username,
+    telegramLink: telegramLinkByUser(user),
     displayName: user.displayName,
     avatarUrl: user.avatarUrl,
     hintMode: user.hintMode === "pro" ? "pro" : "training",
@@ -105,6 +120,7 @@ function publicUserById(userId) {
     return {
       id: TRAINING_BOT_USER_ID,
       username: "trainer_bot",
+      telegramLink: null,
       displayName: "Trainer Bot",
       avatarUrl: null,
       hintMode: "pro",
@@ -579,6 +595,59 @@ function buildDailyLeaderboard(dayKey) {
   }));
 }
 
+function collectRatedFinishedDays(options = {}) {
+  const includeCurrentDay = options.includeCurrentDay === true;
+  const today = toDateKey(nowIso(), APP_TIMEZONE);
+  const days = new Set();
+  for (const game of listGames()) {
+    if (!game || game.status !== "finished" || !game.finishedAt || game.rated === false) continue;
+    const day = toDateKey(game.finishedAt, APP_TIMEZONE);
+    if (!includeCurrentDay && day === today) continue;
+    days.add(day);
+  }
+  return [...days].sort((a, b) => a.localeCompare(b));
+}
+
+function buildDailyWinners(limit = 30, options = {}) {
+  const daysAsc = collectRatedFinishedDays(options);
+  const rows = [];
+  for (const day of daysAsc) {
+    const leaderboard = buildDailyLeaderboard(day);
+    if (!leaderboard.length) continue;
+    rows.push({
+      date: day,
+      timezone: APP_TIMEZONE,
+      winner: leaderboard[0],
+    });
+  }
+
+  rows.sort((a, b) => b.date.localeCompare(a.date));
+  const max = Math.min(Math.max(Number(limit) || 30, 1), 365);
+  return rows.slice(0, max);
+}
+
+function resolveDailyWinner(dayOverride = null) {
+  if (dayOverride) {
+    const leaderboard = buildDailyLeaderboard(dayOverride);
+    return {
+      date: dayOverride,
+      timezone: APP_TIMEZONE,
+      winner: leaderboard.length ? leaderboard[0] : null,
+    };
+  }
+
+  const winners = buildDailyWinners(1);
+  if (winners.length) return winners[0];
+
+  const today = toDateKey(nowIso(), APP_TIMEZONE);
+  const todayLeaderboard = buildDailyLeaderboard(today);
+  return {
+    date: today,
+    timezone: APP_TIMEZONE,
+    winner: todayLeaderboard.length ? todayLeaderboard[0] : null,
+  };
+}
+
 app.get("/health", (_req, res) => {
   res.json({ ok: true, now: nowIso() });
 });
@@ -939,14 +1008,15 @@ app.get("/api/leaderboard/daily", authMiddleware, (req, res) => {
 
 app.get("/api/leaderboard/daily/winner", authMiddleware, (req, res) => {
   const queryDate = normalizeDateKey(req.query.date);
-  const day = queryDate || toDateKey(nowIso(), APP_TIMEZONE);
-  const leaderboard = buildDailyLeaderboard(day);
-  const winner = leaderboard.length ? leaderboard[0] : null;
+  return res.json(resolveDailyWinner(queryDate));
+});
 
+app.get("/api/leaderboard/daily/winners", authMiddleware, (req, res) => {
+  const limitRaw = Number(req.query.limit);
+  const limit = Number.isFinite(limitRaw) ? limitRaw : 60;
   return res.json({
-    date: day,
     timezone: APP_TIMEZONE,
-    winner,
+    winners: buildDailyWinners(limit),
   });
 });
 

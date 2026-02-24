@@ -11,9 +11,11 @@ const state = {
   history: [],
   leadersMode: "global",
   leadersRows: [],
+  winnersRows: [],
   currentView: "lobby",
   noticeTimer: null,
   lobbyPollTimer: null,
+  lobbyPollTick: 0,
   gamePollTimer: null,
   skin: "classic",
   bannerTimer: null,
@@ -197,6 +199,7 @@ const refs = {
   rematchBtn: document.getElementById("rematchBtn"),
   loadGlobalBtn: document.getElementById("loadGlobalBtn"),
   loadDailyBtn: document.getElementById("loadDailyBtn"),
+  loadWinnersBtn: document.getElementById("loadWinnersBtn"),
 };
 
 function showNotice(text) {
@@ -325,6 +328,19 @@ function isProMode() {
   return state.me?.hintMode === "pro";
 }
 
+function userNameHtml(user, fallback = "Unknown") {
+  const name = escapeHtml(user?.displayName || fallback);
+  const link = String(user?.telegramLink || "").trim();
+  if (!link) return name;
+  return `<a class="user-link" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">${name}</a>`;
+}
+
+function formatDayLabel(day) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day || ""));
+  if (!m) return escapeHtml(String(day || ""));
+  return `${m[3]}.${m[2]}`;
+}
+
 function renderWaiting() {
   if (!state.waiting.length) {
     refs.waitingList.innerHTML = '<div class="muted">Сейчас очередь пустая</div>';
@@ -339,7 +355,7 @@ function renderWaiting() {
 
     const left = document.createElement("div");
     left.innerHTML = `
-      <div>${escapeHtml(user.displayName)} ${user.id === state.me?.id ? "(вы)" : ""}</div>
+      <div>${userNameHtml(user)} ${user.id === state.me?.id ? "(you)" : ""}</div>
       <div class="meta">${escapeHtml(statusLabel(user.status))}</div>
     `;
 
@@ -384,7 +400,7 @@ function renderIncomingChallenges() {
 
     const left = document.createElement("div");
     left.innerHTML = `
-      <div>${escapeHtml(challenge.fromUser.displayName)}</div>
+      <div>${userNameHtml(challenge.fromUser)}</div>
       <div class="meta">Вызов в партию</div>
     `;
 
@@ -415,22 +431,21 @@ function renderLobbyLeaders() {
   if (!refs.lobbyLeaders) return;
   const rows = (state.leadersRows || []).slice(0, 10);
   if (!rows.length) {
-    refs.lobbyLeaders.innerHTML = '<div class="muted">Загрузка рейтинга…</div>';
+    refs.lobbyLeaders.innerHTML = '<div class="muted">Loading leaderboard...</div>';
     return;
   }
-  refs.lobbyLeaders.innerHTML = `
-    <table class="table table-compact">
+
+  refs.lobbyLeaders.innerHTML =     `<table class="table table-compact">
       <thead>
-        <tr><th>#</th><th>Игрок</th><th>Очки</th></tr>
+        <tr><th>#</th><th>Player</th><th>Points</th></tr>
       </thead>
       <tbody>
         ${rows.map((r) => {
           const me = r.user?.id === state.me?.id;
-          return `<tr class="${me ? "me" : ""}"><td>${r.rank}</td><td>${escapeHtml(r.user?.displayName || "")}</td><td>${r.points}</td></tr>`;
+          return `<tr class="${me ? "me" : ""}"><td>${r.rank}</td><td>${userNameHtml(r.user, "Unknown")}</td><td>${r.points}</td></tr>`;
         }).join("")}
       </tbody>
-    </table>
-  `;
+    </table>`;
 }
 
 function renderGame() {
@@ -467,13 +482,13 @@ function renderGame() {
         ? `<img src="${escapeHtml(white.avatarUrl)}" alt="">`
         : `<span class="avatar-initial">${escapeHtml((whiteName[0] || "Б").toUpperCase())}</span>`;
     }
-    if (refs.playerWhiteName) refs.playerWhiteName.textContent = whiteName;
+    if (refs.playerWhiteName) refs.playerWhiteName.innerHTML = userNameHtml(white, whiteName);
     if (refs.playerBlackAvatar) {
       refs.playerBlackAvatar.innerHTML = black?.avatarUrl
         ? `<img src="${escapeHtml(black.avatarUrl)}" alt="">`
         : `<span class="avatar-initial">${escapeHtml((blackName[0] || "Ч").toUpperCase())}</span>`;
     }
-    if (refs.playerBlackName) refs.playerBlackName.textContent = blackName;
+    if (refs.playerBlackName) refs.playerBlackName.innerHTML = userNameHtml(black, blackName);
     if (refs.playerTurnBadge) {
       refs.playerTurnBadge.textContent = game.status === "active"
         ? (game.turnColor === "white" ? "Ход белых" : "Ход черных")
@@ -626,18 +641,40 @@ function setSkin(skinId) {
 }
 
 function renderLeaders() {
-  if (!state.leadersRows.length) {
-    refs.leadersTable.innerHTML = '<div class="muted">Пока нет данных</div>';
+  if (state.leadersMode === "winners") {
+    if (!state.winnersRows.length) {
+      refs.leadersTable.innerHTML = '<div class="muted">No completed days yet</div>';
+      return;
+    }
+
+    refs.leadersTable.innerHTML =       `<table class="table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Winner</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${state.winnersRows.map((row) => {
+            const winner = row?.winner?.user || null;
+            return `<tr><td>${formatDayLabel(row.date)}</td><td>${userNameHtml(winner, "No winner")}</td></tr>`;
+          }).join("")}
+        </tbody>
+      </table>`;
     return;
   }
 
-  refs.leadersTable.innerHTML = `
-    <table class="table">
+  if (!state.leadersRows.length) {
+    refs.leadersTable.innerHTML = '<div class="muted">No data yet</div>';
+    return;
+  }
+
+  refs.leadersTable.innerHTML =     `<table class="table">
       <thead>
         <tr>
           <th>#</th>
-          <th>Игрок</th>
-          <th>Очки</th>
+          <th>Player</th>
+          <th>Points</th>
           <th>W</th>
           <th>L</th>
           <th>D</th>
@@ -650,7 +687,7 @@ function renderLeaders() {
             return `
               <tr class="${meClass}">
                 <td>${row.rank}</td>
-                <td>${escapeHtml(row.user.displayName)}</td>
+                <td>${userNameHtml(row.user, "Unknown")}</td>
                 <td>${row.points}</td>
                 <td>${row.wins}</td>
                 <td>${row.losses}</td>
@@ -660,13 +697,12 @@ function renderLeaders() {
           })
           .join("")}
       </tbody>
-    </table>
-  `;
+    </table>`;
 }
 
 function renderHistory() {
   if (!state.history.length) {
-    refs.historyList.innerHTML = '<div class="muted">История пока пустая</div>';
+    refs.historyList.innerHTML = '<div class="muted">History is empty</div>';
     return;
   }
 
@@ -678,23 +714,21 @@ function renderHistory() {
 
     const label =
       game.perspectiveResult === "win"
-        ? "Победа"
+        ? "Win"
         : game.perspectiveResult === "loss"
-          ? "Поражение"
+          ? "Loss"
           : game.perspectiveResult === "draw"
-            ? "Ничья"
-            : "В процессе";
+            ? "Draw"
+            : "In progress";
 
-    item.innerHTML = `
-      <div>
-        <div>${escapeHtml(game.opponent?.displayName || "Неизвестный")} | ${label}</div>
-        <div class="meta">${escapeHtml(game.finishReason || "-")} | ходов: ${game.movesCount}</div>
-      </div>
-    `;
+    item.innerHTML =       `<div>
+        <div>${userNameHtml(game.opponent, "Unknown")} | ${label}</div>
+        <div class="meta">${escapeHtml(game.finishReason || "-")} | moves: ${game.movesCount}</div>
+      </div>`;
 
     const btn = document.createElement("button");
     btn.className = "ghost";
-    btn.textContent = "Открыть";
+    btn.textContent = "Open";
     btn.onclick = () => openGameFromHistory(game.id);
 
     item.appendChild(btn);
@@ -792,20 +826,31 @@ async function loadGlobalLeaders() {
   const data = await api("/api/leaderboard/global");
   state.leadersMode = "global";
   state.leadersRows = data.leaderboard || [];
-  refs.leadersInfo.textContent = "Общий рейтинг";
+  state.winnersRows = [];
+  refs.leadersInfo.textContent = "Global leaderboard";
   renderLeaders();
   renderLobbyLeaders();
 }
 
 async function loadDailyLeaders() {
-  const [data, winnerData] = await Promise.all([
-    api("/api/leaderboard/daily"),
-    api("/api/leaderboard/daily/winner"),
-  ]);
+  const data = await api("/api/leaderboard/daily");
+  const winnerData = data?.date
+    ? await api(`/api/leaderboard/daily/winner?date=${encodeURIComponent(data.date)}`)
+    : await api("/api/leaderboard/daily/winner");
   state.leadersMode = "daily";
   state.leadersRows = data.leaderboard || [];
-  const winnerName = winnerData?.winner?.user?.displayName || "нет";
-  refs.leadersInfo.textContent = `Суточный рейтинг: ${data.date} (${data.timezone}) | победитель: ${winnerName}`;
+  state.winnersRows = [];
+  const winnerHtml = userNameHtml(winnerData?.winner?.user || null, "none");
+  refs.leadersInfo.innerHTML = `Daily leaderboard: ${escapeHtml(data.date)} (${escapeHtml(data.timezone)}) | winner: ${winnerHtml}`;
+  renderLeaders();
+}
+
+async function loadDailyWinners() {
+  const data = await api("/api/leaderboard/daily/winners");
+  state.leadersMode = "winners";
+  state.winnersRows = data.winners || [];
+  state.leadersRows = [];
+  refs.leadersInfo.textContent = "Daily winners of completed days (Moscow close at 00:00)";
   renderLeaders();
 }
 
@@ -890,10 +935,26 @@ function startLobbyPolling() {
   if (state.lobbyPollTimer) {
     clearInterval(state.lobbyPollTimer);
   }
+  state.lobbyPollTick = 0;
 
   state.lobbyPollTimer = setInterval(() => {
     if (!state.token) return;
+    state.lobbyPollTick += 1;
     loadWaiting().catch(() => {});
+
+    if (state.lobbyPollTick % 12 !== 0) return;
+
+    const shouldRefreshGlobal = state.currentView === "lobby" || state.leadersMode === "global";
+    if (shouldRefreshGlobal) {
+      loadGlobalLeaders().catch(() => {});
+    }
+    if (state.currentView === "leaders") {
+      if (state.leadersMode === "daily") {
+        loadDailyLeaders().catch(() => {});
+      } else if (state.leadersMode === "winners") {
+        loadDailyWinners().catch(() => {});
+      }
+    }
   }, 5000);
 }
 
@@ -1012,6 +1073,9 @@ function wireEvents() {
 
   refs.loadGlobalBtn.addEventListener("click", () => loadGlobalLeaders().catch((err) => showNotice(err.message)));
   refs.loadDailyBtn.addEventListener("click", () => loadDailyLeaders().catch((err) => showNotice(err.message)));
+  if (refs.loadWinnersBtn) {
+    refs.loadWinnersBtn.addEventListener("click", () => loadDailyWinners().catch((err) => showNotice(err.message)));
+  }
 
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", () => setView(tab.dataset.view));
