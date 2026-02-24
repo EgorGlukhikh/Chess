@@ -358,11 +358,15 @@ function formatDayLabel(day) {
 }
 
 function queueModeLabel(mode) {
-  return mode === "timed" ? "РЅР° РІСЂРµРјСЏ (60СЃ/С…РѕРґ)" : "Р±РµР· РІСЂРµРјРµРЅРё";
+  return mode === "timed"
+    ? "\u043d\u0430 \u0432\u0440\u0435\u043c\u044f (60\u0441/\u0445\u043e\u0434)"
+    : "\u0431\u0435\u0437 \u0432\u0440\u0435\u043c\u0435\u043d\u0438";
 }
 
 function gameModeLabel(mode) {
-  return mode === "timed" ? "Р РµР¶РёРј: РЅР° РІСЂРµРјСЏ (60СЃ/С…РѕРґ)" : "Р РµР¶РёРј: Р±РµР· РІСЂРµРјРµРЅРё";
+  return mode === "timed"
+    ? "\u0420\u0435\u0436\u0438\u043c: \u043d\u0430 \u0432\u0440\u0435\u043c\u044f (60\u0441/\u0445\u043e\u0434)"
+    : "\u0420\u0435\u0436\u0438\u043c: \u0431\u0435\u0437 \u0432\u0440\u0435\u043c\u0435\u043d\u0438";
 }
 
 function stopTurnTimer() {
@@ -385,10 +389,10 @@ function renderTurnTimer(game) {
   const update = () => {
     const remainingMs = new Date(game.turnDeadlineAt).getTime() - Date.now();
     const seconds = Math.max(0, Math.ceil(remainingMs / 1000));
-    refs.gameTurnTimer.textContent = `РўР°Р№РјРµСЂ С…РѕРґР°: ${seconds}СЃ`;
+    refs.gameTurnTimer.textContent = `\u0422\u0430\u0439\u043c\u0435\u0440 \u0445\u043e\u0434\u0430: ${seconds}\u0441`;
     refs.gameTurnTimer.classList.remove("hidden");
     if (seconds <= 0) {
-      refs.gameTurnTimer.textContent = "РўР°Р№РјРµСЂ С…РѕРґР°: 0СЃ (РѕР¶РёРґР°РµРј РїРµСЂРµРєР»СЋС‡РµРЅРёРµ С…РѕРґР°)";
+      refs.gameTurnTimer.textContent = "\u0422\u0430\u0439\u043c\u0435\u0440 \u0445\u043e\u0434\u0430: 0\u0441 (\u043e\u0436\u0438\u0434\u0430\u0435\u043c \u043f\u0435\u0440\u0435\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0435 \u0445\u043e\u0434\u0430)";
     }
   };
 
@@ -1051,9 +1055,9 @@ function connectSocket() {
   state.socket.on("game:turn:timeout", (payload) => {
     if (!state.me) return;
     if (payload?.timedOutUserId === state.me.id) {
-      showNotice("Р’СЂРµРјСЏ РЅР° С…РѕРґ РёСЃС‚РµРєР»Рѕ, С…РѕРґ РїРµСЂРµРґР°РЅ СЃРѕРїРµСЂРЅРёРєСѓ");
+      showNotice("\u0412\u0440\u0435\u043c\u044f \u043d\u0430 \u0445\u043e\u0434 \u0438\u0441\u0442\u0435\u043a\u043b\u043e, \u0445\u043e\u0434 \u043f\u0435\u0440\u0435\u0434\u0430\u043d \u0441\u043e\u043f\u0435\u0440\u043d\u0438\u043a\u0443");
     } else {
-      showNotice("Р’СЂРµРјСЏ СЃРѕРїРµСЂРЅРёРєР° РёСЃС‚РµРєР»Рѕ, С…РѕРґ РїРµСЂРµС€РµР» РІР°Рј");
+      showNotice("\u0412\u0440\u0435\u043c\u044f \u0441\u043e\u043f\u0435\u0440\u043d\u0438\u043a\u0430 \u0438\u0441\u0442\u0435\u043a\u043b\u043e, \u0445\u043e\u0434 \u043f\u0435\u0440\u0435\u0448\u0435\u043b \u0432\u0430\u043c");
     }
   });
 
@@ -1115,7 +1119,11 @@ function startGamePolling() {
 async function joinQueue(gameMode = "untimed") {
   try {
     await api("/api/lobby/queue/join", { method: "POST", body: { gameMode } });
-    showNotice(gameMode === "timed" ? "Queue: timed mode (60s per turn)" : "Queue: untimed mode");
+    showNotice(
+      gameMode === "timed"
+        ? "\u041e\u0447\u0435\u0440\u0435\u0434\u044c: \u0440\u0435\u0436\u0438\u043c \u043d\u0430 \u0432\u0440\u0435\u043c\u044f (60\u0441/\u0445\u043e\u0434)"
+        : "\u041e\u0447\u0435\u0440\u0435\u0434\u044c: \u0440\u0435\u0436\u0438\u043c \u0431\u0435\u0437 \u0432\u0440\u0435\u043c\u0435\u043d\u0438",
+    );
   } catch (err) {
     showNotice(err.message);
   }
