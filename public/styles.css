@@ -363,7 +363,7 @@ html[data-skin="mar8"] .skin-banner::after {
 
 .nav {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 4px;
 }
 
@@ -411,6 +411,10 @@ html[data-skin="mar8"] .skin-banner::after {
 .list-item .meta {
   font-size: 0.85rem;
   color: var(--muted);
+}
+
+.tournament-slot {
+  font-weight: 600;
 }
 
 .draw-offer-banner {

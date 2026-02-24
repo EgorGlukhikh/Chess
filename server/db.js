@@ -62,6 +62,10 @@ function initDb() {
       game.rated = true;
       changed = true;
     }
+    if (!("tournament" in game)) {
+      game.tournament = null;
+      changed = true;
+    }
     if (game.timeControlMode !== "timed" && game.timeControlMode !== "untimed") {
       game.timeControlMode = "untimed";
       changed = true;
@@ -314,6 +318,7 @@ function createGame({
   timeControlMode = "untimed",
   perMoveSeconds = null,
   turnStartedAt = null,
+  tournament = null,
 }) {
   const dbRef = getDb();
   const now = nowIso();
@@ -337,6 +342,7 @@ function createGame({
     timeControlMode: timeControlMode === "timed" ? "timed" : "untimed",
     perMoveSeconds: timeControlMode === "timed" ? Number(perMoveSeconds) || 60 : null,
     turnStartedAt: timeControlMode === "timed" ? (turnStartedAt || now) : null,
+    tournament: tournament && typeof tournament === "object" ? { ...tournament } : null,
     createdAt: now,
     updatedAt: now,
   };

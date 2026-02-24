@@ -80,6 +80,7 @@ const challenges = new Map();
 const onlineSocketsByUser = new Map();
 const activeGameByUser = new Map();
 const TIMED_MOVE_SECONDS = 60;
+const TOURNAMENT_SIZE = 4;
 
 function nowIso() {
   return new Date().toISOString();
@@ -91,6 +92,10 @@ function normalizeDateKey(input) {
 
 function normalizeGameMode(value) {
   return String(value || "").trim() === "timed" ? "timed" : "untimed";
+}
+
+function nowMs() {
+  return Date.now();
 }
 
 function toDateKey(iso, timeZone) {
@@ -196,6 +201,7 @@ function getWaitingList() {
       const user = getUserById(userId);
       if (!user) return null;
       if (isInGame(userId)) return null;
+      if (isUserLockedByTournament(userId)) return null;
       return {
         tableId: table.id,
         gameMode: normalizeGameMode(table.gameMode),
@@ -308,6 +314,7 @@ function buildGameState(game, viewerId) {
     turnColor: chess.turn() === "w" ? "white" : "black",
     inCheck: game.status === "active" ? chess.isCheck() : false,
     drawOfferBy,
+    tournament: game.tournament || null,
     timeControlMode: timed ? "timed" : "untimed",
     perMoveSeconds,
     turnStartedAt,
@@ -369,6 +376,9 @@ function createAndStartGame(firstUserId, secondUserId, options = {}) {
 
   const timeControlMode = normalizeGameMode(options.gameMode);
   const perMoveSeconds = timeControlMode === "timed" ? TIMED_MOVE_SECONDS : null;
+  const tournamentMeta = options.tournament && typeof options.tournament === "object"
+    ? { ...options.tournament }
+    : null;
 
   removeFromQueue(firstUserId);
   removeFromQueue(secondUserId);
@@ -383,6 +393,7 @@ function createAndStartGame(firstUserId, secondUserId, options = {}) {
     timeControlMode,
     perMoveSeconds,
     turnStartedAt: nowIso(),
+    tournament: tournamentMeta,
   });
 
   if (!isBotUserId(whiteUserId)) {
@@ -545,6 +556,7 @@ function finishGame(game, { result, finishReason }) {
 
   applyResultToStats(game);
   touchGame(game);
+  maybeAdvanceTournamentByGame(game);
 
   io.to(userRoom(game.whiteUserId)).emit("game:finished", buildGameState(game, game.whiteUserId));
   io.to(userRoom(game.blackUserId)).emit("game:finished", buildGameState(game, game.blackUserId));
@@ -615,6 +627,261 @@ function formatDuration(ms) {
   if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
   if (minutes > 0) return `${minutes}m ${seconds}s`;
   return `${seconds}s`;
+}
+
+function shuffleArray(list) {
+  const arr = [...list];
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function ensureTournamentState() {
+  const dbRef = getDb();
+  if (!dbRef.meta || typeof dbRef.meta !== "object") {
+    dbRef.meta = {};
+  }
+  if (!dbRef.meta.tournament || typeof dbRef.meta.tournament !== "object") {
+    dbRef.meta.tournament = {
+      tournamentNo: 1,
+      status: "registration",
+      slots: [],
+      round1: [],
+      round2: [],
+      lastSummary: null,
+      updatedAt: nowIso(),
+    };
+    saveDb();
+  }
+
+  const t = dbRef.meta.tournament;
+  let changed = false;
+  if (!Number.isInteger(t.tournamentNo) || t.tournamentNo < 1) {
+    t.tournamentNo = 1;
+    changed = true;
+  }
+  if (!["registration", "round1", "round2"].includes(t.status)) {
+    t.status = "registration";
+    changed = true;
+  }
+  if (!Array.isArray(t.slots)) {
+    t.slots = [];
+    changed = true;
+  }
+  if (!Array.isArray(t.round1)) {
+    t.round1 = [];
+    changed = true;
+  }
+  if (!Array.isArray(t.round2)) {
+    t.round2 = [];
+    changed = true;
+  }
+  if (!("lastSummary" in t)) {
+    t.lastSummary = null;
+    changed = true;
+  }
+  if (!t.updatedAt) {
+    t.updatedAt = nowIso();
+    changed = true;
+  }
+  if (changed) saveDb();
+  return t;
+}
+
+function collectTournamentUsers(tournament) {
+  const set = new Set();
+  for (const uid of tournament.slots || []) set.add(uid);
+  for (const m of tournament.round1 || []) {
+    if (m.userAId) set.add(m.userAId);
+    if (m.userBId) set.add(m.userBId);
+  }
+  for (const m of tournament.round2 || []) {
+    if (m.userAId) set.add(m.userAId);
+    if (m.userBId) set.add(m.userBId);
+  }
+  return set;
+}
+
+function isUserLockedByTournament(userId) {
+  const t = ensureTournamentState();
+  const users = collectTournamentUsers(t);
+  return users.has(userId);
+}
+
+function ensureUserCanStartRegularGame(userId, res) {
+  if (!isUserLockedByTournament(userId)) return true;
+  res.status(409).json({ error: "User is participating in tournament" });
+  return false;
+}
+
+function resolveGameWinnerLoser(game) {
+  if (game.result === "1-0") return { winnerUserId: game.whiteUserId, loserUserId: game.blackUserId, tieBreak: false };
+  if (game.result === "0-1") return { winnerUserId: game.blackUserId, loserUserId: game.whiteUserId, tieBreak: false };
+
+  const left = String(game.whiteUserId || "");
+  const right = String(game.blackUserId || "");
+  const winnerUserId = left <= right ? game.whiteUserId : game.blackUserId;
+  const loserUserId = winnerUserId === game.whiteUserId ? game.blackUserId : game.whiteUserId;
+  return { winnerUserId, loserUserId, tieBreak: true };
+}
+
+function publicTournamentMatch(match) {
+  return {
+    id: match.id,
+    stage: match.stage,
+    bracket: match.bracket,
+    gameId: match.gameId,
+    userA: publicUserById(match.userAId),
+    userB: publicUserById(match.userBId),
+    winner: match.winnerUserId ? publicUserById(match.winnerUserId) : null,
+    loser: match.loserUserId ? publicUserById(match.loserUserId) : null,
+    result: match.result || null,
+    finishReason: match.finishReason || null,
+    tieBreak: !!match.tieBreak,
+  };
+}
+
+function buildTournamentPublic() {
+  const t = ensureTournamentState();
+  const users = collectTournamentUsers(t);
+  const participantIds = [...users];
+  return {
+    tournamentNo: t.tournamentNo,
+    status: t.status,
+    slotsMax: TOURNAMENT_SIZE,
+    slots: (t.slots || []).map((uid) => publicUserById(uid)),
+    participants: participantIds.map((uid) => publicUserById(uid)).filter(Boolean),
+    round1: (t.round1 || []).map(publicTournamentMatch),
+    round2: (t.round2 || []).map(publicTournamentMatch),
+    lastSummary: t.lastSummary
+      ? {
+        ...t.lastSummary,
+        standings: (t.lastSummary.standings || []).map((s) => ({
+          place: s.place,
+          user: publicUserById(s.userId),
+        })),
+        round1: (t.lastSummary.round1 || []).map(publicTournamentMatch),
+        round2: (t.lastSummary.round2 || []).map(publicTournamentMatch),
+      }
+      : null,
+    updatedAt: t.updatedAt,
+  };
+}
+
+function emitTournamentUpdate() {
+  io.emit("tournament:update", buildTournamentPublic());
+}
+
+function makeTournamentMatch(stage, bracket, game) {
+  return {
+    id: cryptoRandomId(),
+    stage,
+    bracket,
+    gameId: game.id,
+    userAId: game.whiteUserId,
+    userBId: game.blackUserId,
+    winnerUserId: null,
+    loserUserId: null,
+    result: null,
+    finishReason: null,
+    tieBreak: false,
+  };
+}
+
+function startTournamentRound2(tournament) {
+  const winners = tournament.round1.map((m) => m.winnerUserId);
+  const losers = tournament.round1.map((m) => m.loserUserId);
+  if (winners.length !== 2 || losers.length !== 2) return false;
+
+  const finalGame = createAndStartGame(winners[0], winners[1], {
+    gameMode: "untimed",
+    tournament: {
+      tournamentNo: tournament.tournamentNo,
+      stage: "round2",
+      bracket: "final",
+    },
+  });
+  const thirdPlaceGame = createAndStartGame(losers[0], losers[1], {
+    gameMode: "untimed",
+    tournament: {
+      tournamentNo: tournament.tournamentNo,
+      stage: "round2",
+      bracket: "third",
+    },
+  });
+  if (!finalGame || !thirdPlaceGame) return false;
+
+  tournament.round2 = [
+    makeTournamentMatch("round2", "final", finalGame),
+    makeTournamentMatch("round2", "third", thirdPlaceGame),
+  ];
+  tournament.status = "round2";
+  tournament.updatedAt = nowIso();
+  return true;
+}
+
+function finalizeTournament(tournament) {
+  const final = (tournament.round2 || []).find((m) => m.bracket === "final");
+  const third = (tournament.round2 || []).find((m) => m.bracket === "third");
+  if (!final || !third || !final.winnerUserId || !third.winnerUserId) return false;
+
+  const standings = [
+    { place: 1, userId: final.winnerUserId },
+    { place: 2, userId: final.loserUserId },
+    { place: 3, userId: third.winnerUserId },
+    { place: 4, userId: third.loserUserId },
+  ];
+
+  tournament.lastSummary = {
+    tournamentNo: tournament.tournamentNo,
+    finishedAt: nowIso(),
+    standings,
+    round1: (tournament.round1 || []).map((m) => ({ ...m })),
+    round2: (tournament.round2 || []).map((m) => ({ ...m })),
+  };
+
+  tournament.tournamentNo += 1;
+  tournament.status = "registration";
+  tournament.slots = [];
+  tournament.round1 = [];
+  tournament.round2 = [];
+  tournament.updatedAt = nowIso();
+  return true;
+}
+
+function maybeAdvanceTournamentByGame(game) {
+  if (!game?.tournament || game.status !== "finished") return;
+  const tournament = ensureTournamentState();
+  if (game.tournament.tournamentNo !== tournament.tournamentNo) return;
+
+  const allMatches = [...(tournament.round1 || []), ...(tournament.round2 || [])];
+  const match = allMatches.find((m) => m.gameId === game.id);
+  if (!match || match.winnerUserId) return;
+
+  const outcome = resolveGameWinnerLoser(game);
+  match.winnerUserId = outcome.winnerUserId;
+  match.loserUserId = outcome.loserUserId;
+  match.result = game.result;
+  match.finishReason = game.finishReason;
+  match.tieBreak = outcome.tieBreak;
+  tournament.updatedAt = nowIso();
+
+  if (tournament.status === "round1") {
+    const ready = tournament.round1.length === 2 && tournament.round1.every((m) => !!m.winnerUserId);
+    if (ready) {
+      startTournamentRound2(tournament);
+    }
+  } else if (tournament.status === "round2") {
+    const ready = tournament.round2.length === 2 && tournament.round2.every((m) => !!m.winnerUserId);
+    if (ready) {
+      finalizeTournament(tournament);
+    }
+  }
+
+  saveDb();
+  emitTournamentUpdate();
 }
 
 function buildGlobalLeaderboard() {
@@ -907,6 +1174,77 @@ app.post("/api/me/hint-mode", authMiddleware, (req, res) => {
   return res.json({ ok: true, user: publicUser(updated) });
 });
 
+app.get("/api/tournament", authMiddleware, (_req, res) => {
+  return res.json(buildTournamentPublic());
+});
+
+app.post("/api/tournament/register", authMiddleware, (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+
+  const tournament = ensureTournamentState();
+  if ((tournament.slots || []).includes(user.id)) {
+    return res.json({ ok: true, tournament: buildTournamentPublic() });
+  }
+  if (isInGame(user.id)) {
+    return res.status(409).json({ error: "Finish your current game first" });
+  }
+  if (tournament.status !== "registration") {
+    return res.status(409).json({ error: "Tournament is already in progress" });
+  }
+  if ((tournament.slots || []).length >= TOURNAMENT_SIZE) {
+    return res.status(409).json({ error: "Tournament slots are full" });
+  }
+
+  removeFromQueue(user.id);
+  clearUserChallenges(user.id);
+  tournament.slots.push(user.id);
+  tournament.updatedAt = nowIso();
+
+  if (tournament.slots.length === TOURNAMENT_SIZE) {
+    const seeded = shuffleArray(tournament.slots);
+    const gameA = createAndStartGame(seeded[0], seeded[1], {
+      gameMode: "untimed",
+      tournament: {
+        tournamentNo: tournament.tournamentNo,
+        stage: "round1",
+        bracket: "main",
+      },
+    });
+    const gameB = createAndStartGame(seeded[2], seeded[3], {
+      gameMode: "untimed",
+      tournament: {
+        tournamentNo: tournament.tournamentNo,
+        stage: "round1",
+        bracket: "main",
+      },
+    });
+    if (!gameA || !gameB) {
+      tournament.status = "registration";
+      tournament.slots = [];
+      tournament.round1 = [];
+      tournament.round2 = [];
+      tournament.updatedAt = nowIso();
+      saveDb();
+      emitTournamentUpdate();
+      return res.status(409).json({ error: "Unable to start tournament now" });
+    }
+    tournament.round1 = [
+      makeTournamentMatch("round1", "main", gameA),
+      makeTournamentMatch("round1", "main", gameB),
+    ];
+    tournament.round2 = [];
+    tournament.status = "round1";
+    tournament.updatedAt = nowIso();
+  }
+
+  saveDb();
+  emitWaitingList();
+  emitPresence();
+  emitTournamentUpdate();
+  return res.json({ ok: true, tournament: buildTournamentPublic() });
+});
+
 app.get("/api/lobby/waiting", authMiddleware, (_req, res) => {
   res.json({ waiting: getWaitingList() });
 });
@@ -914,6 +1252,7 @@ app.get("/api/lobby/waiting", authMiddleware, (_req, res) => {
 app.post("/api/lobby/queue/join", authMiddleware, (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
+  if (!ensureUserCanStartRegularGame(user.id, res)) return;
 
   if (isInGame(user.id)) {
     return res.status(409).json({ error: "You are already in game" });
@@ -935,6 +1274,7 @@ app.post("/api/lobby/queue/join", authMiddleware, (req, res) => {
 app.post("/api/lobby/queue/join-user", authMiddleware, (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
+  if (!ensureUserCanStartRegularGame(user.id, res)) return;
 
   const toUserId = String(req.body?.toUserId || "").trim();
   if (!toUserId) {
@@ -948,6 +1288,7 @@ app.post("/api/lobby/queue/join-user", authMiddleware, (req, res) => {
   if (!targetUser) {
     return res.status(404).json({ error: "Target user not found" });
   }
+  if (!ensureUserCanStartRegularGame(targetUser.id, res)) return;
 
   const targetTable = getOpenTableByOwner(toUserId);
   if (!targetTable) {
@@ -971,6 +1312,7 @@ app.post("/api/lobby/queue/join-user", authMiddleware, (req, res) => {
 app.post("/api/training/bot/start", authMiddleware, (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
+  if (!ensureUserCanStartRegularGame(user.id, res)) return;
 
   if (isInGame(user.id)) {
     return res.status(409).json({ error: "You are already in game" });
@@ -1013,6 +1355,7 @@ app.post("/api/lobby/queue/leave", authMiddleware, (req, res) => {
 app.post("/api/lobby/challenge", authMiddleware, (req, res) => {
   const fromUser = requireUser(req, res);
   if (!fromUser) return;
+  if (!ensureUserCanStartRegularGame(fromUser.id, res)) return;
 
   cleanupChallenges();
 
@@ -1029,6 +1372,7 @@ app.post("/api/lobby/challenge", authMiddleware, (req, res) => {
   if (!toUser) {
     return res.status(404).json({ error: "Target user not found" });
   }
+  if (!ensureUserCanStartRegularGame(toUser.id, res)) return;
 
   if (isInGame(fromUser.id) || isInGame(toUserId)) {
     return res.status(409).json({ error: "One of users is already in game" });
@@ -1107,6 +1451,9 @@ app.post("/api/lobby/challenge/respond", authMiddleware, (req, res) => {
 
     return res.json({ ok: true, declined: true });
   }
+
+  if (!ensureUserCanStartRegularGame(toUser.id, res)) return;
+  if (!ensureUserCanStartRegularGame(fromUser.id, res)) return;
 
   if (isInGame(fromUser.id) || isInGame(toUser.id)) {
     challenges.delete(challengeId);
@@ -1256,6 +1603,7 @@ io.on("connection", (socket) => {
   }
 
   socket.emit("lobby:waiting", getWaitingList());
+  socket.emit("tournament:update", buildTournamentPublic());
   emitPresence();
 
   socket.on("game:move", (payload = {}) => {
@@ -1409,6 +1757,10 @@ io.on("connection", (socket) => {
     if (!game || game.status !== "finished" || !isParticipant(game, userId)) {
       return;
     }
+    if (isUserLockedByTournament(userId)) {
+      socket.emit("error:message", { code: "tournament_lock", message: "Rematch is disabled during tournament" });
+      return;
+    }
 
     const opponentId = otherPlayer(game, userId);
     if (isBotUserId(opponentId)) {
@@ -1484,6 +1836,7 @@ function cryptoRandomId() {
 
 // ——— Запуск ———
 rebuildActiveGameMap();
+ensureTournamentState();
 setInterval(cleanupChallenges, 10_000);
 setInterval(processTimedTurnTimeouts, 1000);
 

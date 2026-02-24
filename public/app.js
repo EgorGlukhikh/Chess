@@ -12,6 +12,7 @@
   leadersMode: "global",
   leadersRows: [],
   winnersRows: [],
+  tournament: null,
   isAdmin: false,
   adminGamesLog: [],
   currentView: "lobby",
@@ -208,6 +209,11 @@ const refs = {
   leadersInfo: document.getElementById("leadersInfo"),
   leadersTable: document.getElementById("leadersTable"),
   historyList: document.getElementById("historyList"),
+  tournamentStatus: document.getElementById("tournamentStatus"),
+  tournamentRegisterBtn: document.getElementById("tournamentRegisterBtn"),
+  tournamentSlots: document.getElementById("tournamentSlots"),
+  tournamentBracket: document.getElementById("tournamentBracket"),
+  tournamentSummary: document.getElementById("tournamentSummary"),
   joinQueueTimedBtn: document.getElementById("joinQueueTimedBtn"),
   joinQueueUntimedBtn: document.getElementById("joinQueueUntimedBtn"),
   startBotGameBtn: document.getElementById("startBotGameBtn"),
@@ -251,6 +257,10 @@ function setView(view) {
   });
 
   if (view === "lobby") renderLobbyLeaders();
+  if (view === "tournament") {
+    renderTournament();
+    if (state.token) loadTournament().catch(() => {});
+  }
   if (view === "profile" && state.isAdmin && !state.adminGamesLog.length) {
     loadAdminGamesLog().catch(() => {});
   }
@@ -372,6 +382,74 @@ function gameModeLabel(mode) {
   return mode === "timed"
     ? "\u0420\u0435\u0436\u0438\u043c: \u043d\u0430 \u0432\u0440\u0435\u043c\u044f (60\u0441/\u0445\u043e\u0434)"
     : "\u0420\u0435\u0436\u0438\u043c: \u0431\u0435\u0437 \u0432\u0440\u0435\u043c\u0435\u043d\u0438";
+}
+
+function tournamentStatusLabel(status) {
+  if (status === "registration") return "Идет регистрация";
+  if (status === "round1") return "Первый раунд";
+  if (status === "round2") return "Финальный раунд";
+  return status || "-";
+}
+
+function renderTournament() {
+  const data = state.tournament;
+  if (!refs.tournamentStatus || !refs.tournamentSlots || !refs.tournamentBracket || !refs.tournamentSummary) return;
+
+  if (!data) {
+    refs.tournamentStatus.textContent = "Загрузка турнира...";
+    refs.tournamentSlots.innerHTML = '<div class="muted">-</div>';
+    refs.tournamentBracket.innerHTML = '<div class="muted">-</div>';
+    refs.tournamentSummary.innerHTML = '<div class="muted">-</div>';
+    if (refs.tournamentRegisterBtn) refs.tournamentRegisterBtn.disabled = true;
+    return;
+  }
+
+  const slotRows = [];
+  for (let i = 0; i < (data.slotsMax || 4); i += 1) {
+    const user = data.slots?.[i] || null;
+    slotRows.push(`<div class="list-item"><div class="tournament-slot">Слот ${i + 1}: ${user ? userNameHtml(user, "Участник") : "свободно"}</div></div>`);
+  }
+  refs.tournamentSlots.innerHTML = slotRows.join("");
+
+  const round1 = data.round1 || [];
+  const round2 = data.round2 || [];
+  const matchRows = [];
+  for (const m of [...round1, ...round2]) {
+    const left = userNameHtml(m.userA, "Игрок A");
+    const right = userNameHtml(m.userB, "Игрок B");
+    const winner = m.winner ? userNameHtml(m.winner, "—") : "—";
+    const bracketLabel = m.bracket === "final" ? "Финал (за 1 место)" : m.bracket === "third" ? "Матч за 3 место" : "Раунд 1";
+    const openBtn = m.gameId && (m.userA?.id === state.me?.id || m.userB?.id === state.me?.id)
+      ? `<button class="ghost" type="button" data-open-game="${escapeHtml(m.gameId)}">Открыть</button>`
+      : "";
+    matchRows.push(`<div class="list-item"><div><div><strong>${bracketLabel}</strong></div><div>${left} vs ${right}</div><div class="meta">Победитель: ${winner}${m.tieBreak ? " (тай-брейк)" : ""}</div></div>${openBtn}</div>`);
+  }
+  refs.tournamentBracket.innerHTML = matchRows.length ? matchRows.join("") : '<div class="muted">Сетка появится после заполнения 4 слотов</div>';
+
+  const summary = data.lastSummary;
+  if (summary?.standings?.length) {
+    refs.tournamentSummary.innerHTML = summary.standings
+      .map((row) => `<div class="list-item"><div><strong>${row.place} место</strong>: ${userNameHtml(row.user, "Игрок")}</div></div>`)
+      .join("");
+  } else {
+    refs.tournamentSummary.innerHTML = '<div class="muted">Пока нет завершенных турниров</div>';
+  }
+
+  const slotsCount = Array.isArray(data.slots) ? data.slots.length : 0;
+  refs.tournamentStatus.textContent = `${tournamentStatusLabel(data.status)} | Слотов: ${slotsCount}/${data.slotsMax || 4}`;
+
+  if (refs.tournamentRegisterBtn) {
+    const alreadyIn = (data.participants || []).some((u) => u?.id === state.me?.id);
+    refs.tournamentRegisterBtn.disabled = data.status !== "registration" || alreadyIn || slotsCount >= (data.slotsMax || 4);
+    refs.tournamentRegisterBtn.textContent = alreadyIn ? "Вы зарегистрированы" : "Зарегистрироваться";
+  }
+
+  refs.tournamentBracket.querySelectorAll("[data-open-game]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const gameId = btn.getAttribute("data-open-game");
+      if (gameId) openGameFromHistory(gameId);
+    });
+  });
 }
 
 function stopTurnTimer() {
@@ -946,6 +1024,19 @@ async function loadHistory() {
   renderHistory();
 }
 
+async function loadTournament() {
+  const data = await api("/api/tournament");
+  state.tournament = data || null;
+  renderTournament();
+}
+
+async function registerTournament() {
+  const data = await api("/api/tournament/register", { method: "POST" });
+  state.tournament = data?.tournament || state.tournament;
+  renderTournament();
+  showNotice("Вы зарегистрированы в турнире");
+}
+
 async function loadAdminGamesLog() {
   if (!state.isAdmin) return;
   const data = await api("/api/admin/games-log?limit=120");
@@ -1006,6 +1097,11 @@ function connectSocket() {
   state.socket.on("lobby:waiting", (payload) => {
     state.waiting = Array.isArray(payload) ? payload : [];
     renderWaiting();
+  });
+
+  state.socket.on("tournament:update", (payload) => {
+    state.tournament = payload || null;
+    renderTournament();
   });
 
   state.socket.on("lobby:challenge:incoming", (challenge) => {
@@ -1095,6 +1191,7 @@ function startLobbyPolling() {
         loadDailyWinners().catch(() => {});
       }
     }
+    loadTournament().catch(() => {});
   }, 5000);
 }
 
@@ -1225,6 +1322,9 @@ function wireEvents() {
   if (refs.loadWinnersBtn) {
     refs.loadWinnersBtn.addEventListener("click", () => loadDailyWinners().catch((err) => showNotice(err.message)));
   }
+  if (refs.tournamentRegisterBtn) {
+    refs.tournamentRegisterBtn.addEventListener("click", () => registerTournament().catch((err) => showNotice(err.message)));
+  }
 
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", () => setView(tab.dataset.view));
@@ -1236,7 +1336,7 @@ async function onAuthenticated(authResponse) {
   localStorage.setItem("chess_token", state.token);
 
   await refreshMe();
-  await Promise.all([loadWaiting(), loadGlobalLeaders(), loadDailyLeaders(), loadHistory()]);
+  await Promise.all([loadWaiting(), loadGlobalLeaders(), loadDailyLeaders(), loadHistory(), loadTournament()]);
 
   refs.authScreen.classList.add("hidden");
   refs.appScreen.classList.remove("hidden");

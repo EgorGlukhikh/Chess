@@ -49,6 +49,7 @@
         <button class="tab" data-view="profile" type="button">Профиль</button>
         <button class="tab" data-view="leaders" type="button">Рейтинг</button>
         <button class="tab" data-view="history" type="button">История</button>
+        <button class="tab" data-view="tournament" type="button">Турнир 2+2</button>
       </nav>
 
       <main>
@@ -133,6 +134,20 @@
         <section id="view-history" class="view card hidden">
           <h2>История партий</h2>
           <div id="historyList" class="list"></div>
+        </section>
+
+        <section id="view-tournament" class="view card hidden">
+          <h2>Турнир 2+2</h2>
+          <div id="tournamentStatus" class="muted"></div>
+          <div class="actions-row" style="margin-top:8px;">
+            <button id="tournamentRegisterBtn" class="primary">Зарегистрироваться</button>
+          </div>
+          <h3>Слоты</h3>
+          <div id="tournamentSlots" class="list"></div>
+          <h3>Сетка</h3>
+          <div id="tournamentBracket" class="list"></div>
+          <h3>Итог турнира</h3>
+          <div id="tournamentSummary" class="list"></div>
         </section>
       </main>
     </section>
