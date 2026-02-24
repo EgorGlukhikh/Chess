@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
@@ -55,7 +55,8 @@
         <section id="view-lobby" class="view card">
           <h2>Лобби</h2>
           <div class="actions-row">
-            <button id="joinQueueBtn" class="primary">Найти игру</button>
+            <button id="joinQueueTimedBtn" class="primary">Find game (60s)</button>
+            <button id="joinQueueUntimedBtn" class="ghost">Find game (untimed)</button>
             <button id="startBotGameBtn" class="ghost">С ботом</button>
             <button id="leaveQueueBtn" class="ghost">Выйти из очереди</button>
           </div>
@@ -73,6 +74,7 @@
         <section id="view-game" class="view card hidden">
           <h2>Партия</h2>
           <div id="gameMeta" class="game-meta">Нет активной партии</div>
+          <div id="gameTurnTimer" class="turn-timer hidden"></div>
 
           <div id="drawOfferBlock" class="draw-offer-banner hidden">
             <span>Соперник предложил ничью</span>
@@ -139,3 +141,4 @@
     <script src="/app.js"></script>
   </body>
 </html>
+

@@ -79,6 +79,7 @@ const io = new Server(server, {
 const challenges = new Map();
 const onlineSocketsByUser = new Map();
 const activeGameByUser = new Map();
+const TIMED_MOVE_SECONDS = 60;
 
 function nowIso() {
   return new Date().toISOString();
@@ -86,6 +87,10 @@ function nowIso() {
 
 function normalizeDateKey(input) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(input || "")) ? input : null;
+}
+
+function normalizeGameMode(value) {
+  return String(value || "").trim() === "timed" ? "timed" : "untimed";
 }
 
 function toDateKey(iso, timeZone) {
@@ -193,6 +198,7 @@ function getWaitingList() {
       if (isInGame(userId)) return null;
       return {
         tableId: table.id,
+        gameMode: normalizeGameMode(table.gameMode),
         createdAt: table.createdAt,
         ...publicUser(user),
         status: getPresenceStatus(userId),
@@ -281,6 +287,14 @@ function buildGameState(game, viewerId) {
       : "opponent"
     : null;
 
+  const timed = normalizeGameMode(game.timeControlMode) === "timed";
+  const perMoveSeconds = timed ? Number(game.perMoveSeconds) || TIMED_MOVE_SECONDS : null;
+  const turnStartedAtRaw = timed ? (game.turnStartedAt || game.startedAt || nowIso()) : null;
+  const turnStartedMs = timed ? new Date(turnStartedAtRaw).getTime() : NaN;
+  const safeTurnStartedMs = Number.isFinite(turnStartedMs) ? turnStartedMs : Date.now();
+  const turnStartedAt = timed ? new Date(safeTurnStartedMs).toISOString() : null;
+  const turnDeadlineAt = timed ? new Date(safeTurnStartedMs + perMoveSeconds * 1000).toISOString() : null;
+
   return {
     id: game.id,
     status: game.status,
@@ -294,6 +308,10 @@ function buildGameState(game, viewerId) {
     turnColor: chess.turn() === "w" ? "white" : "black",
     inCheck: game.status === "active" ? chess.isCheck() : false,
     drawOfferBy,
+    timeControlMode: timed ? "timed" : "untimed",
+    perMoveSeconds,
+    turnStartedAt,
+    turnDeadlineAt,
     rematchBy: Array.isArray(game.rematchBy)
       ? game.rematchBy.map((userId) => (userId === viewerId ? "self" : "opponent"))
       : [],
@@ -349,6 +367,9 @@ function createAndStartGame(firstUserId, secondUserId, options = {}) {
     blackUserId = randomWhite === firstUserId ? secondUserId : firstUserId;
   }
 
+  const timeControlMode = normalizeGameMode(options.gameMode);
+  const perMoveSeconds = timeControlMode === "timed" ? TIMED_MOVE_SECONDS : null;
+
   removeFromQueue(firstUserId);
   removeFromQueue(secondUserId);
   clearUserChallenges(firstUserId);
@@ -359,6 +380,9 @@ function createAndStartGame(firstUserId, secondUserId, options = {}) {
     blackUserId,
     fen: chess.fen(),
     rated: options.rated !== false,
+    timeControlMode,
+    perMoveSeconds,
+    turnStartedAt: nowIso(),
   });
 
   if (!isBotUserId(whiteUserId)) {
@@ -374,6 +398,80 @@ function createAndStartGame(firstUserId, secondUserId, options = {}) {
   emitPresence();
 
   return game;
+}
+
+function switchTurnFen(fen) {
+  const parts = String(fen || "").trim().split(/\s+/);
+  if (parts.length < 6) return null;
+  const currentTurn = parts[1] === "w" ? "w" : "b";
+  parts[1] = currentTurn === "w" ? "b" : "w";
+  parts[3] = "-";
+  const halfMove = Number(parts[4]);
+  parts[4] = String(Number.isFinite(halfMove) ? halfMove + 1 : 0);
+  const fullMove = Number(parts[5]);
+  if (currentTurn === "b") {
+    parts[5] = String(Number.isFinite(fullMove) ? fullMove + 1 : 1);
+  }
+  return parts.join(" ");
+}
+
+function processTimedTurnTimeout(game) {
+  if (!game || game.status !== "active") return false;
+  if (normalizeGameMode(game.timeControlMode) !== "timed") return false;
+
+  const perMoveSeconds = Number(game.perMoveSeconds) || TIMED_MOVE_SECONDS;
+  const turnStartedAt = game.turnStartedAt || game.startedAt;
+  const startedMs = new Date(turnStartedAt).getTime();
+  if (!Number.isFinite(startedMs)) return false;
+  if (Date.now() < startedMs + perMoveSeconds * 1000) return false;
+
+  const chess = new Chess(game.fenCurrent);
+  const timedOutColor = chess.turn();
+  const timedOutUserId = timedOutColor === "w" ? game.whiteUserId : game.blackUserId;
+  const nextUserId = timedOutColor === "w" ? game.blackUserId : game.whiteUserId;
+
+  const nextFen = switchTurnFen(game.fenCurrent);
+  if (!nextFen) return false;
+
+  game.moves.push({
+    moveNo: game.moves.length + 1,
+    side: timedOutColor,
+    from: null,
+    to: null,
+    promotion: null,
+    uci: "pass",
+    san: "--",
+    fenAfter: nextFen,
+    createdAt: nowIso(),
+  });
+  game.fenCurrent = nextFen;
+  game.drawOfferBy = null;
+  game.turnStartedAt = nowIso();
+  touchGame(game);
+
+  io.to(userRoom(game.whiteUserId)).emit("game:turn:timeout", {
+    gameId: game.id,
+    timedOutUserId,
+    nextTurnUserId: nextUserId,
+  });
+  io.to(userRoom(game.blackUserId)).emit("game:turn:timeout", {
+    gameId: game.id,
+    timedOutUserId,
+    nextTurnUserId: nextUserId,
+  });
+
+  emitGameState(game);
+
+  if (isBotUserId(nextUserId)) {
+    scheduleBotMove(game);
+  }
+  return true;
+}
+
+function processTimedTurnTimeouts() {
+  for (const game of listActiveGames()) {
+    processTimedTurnTimeout(game);
+  }
 }
 
 function pickBotMove(chess) {
@@ -419,6 +517,9 @@ function scheduleBotMove(game, delayMs = 700) {
     fresh.fenCurrent = chess.fen();
     fresh.pgn = chess.pgn();
     fresh.drawOfferBy = null;
+    if (normalizeGameMode(fresh.timeControlMode) === "timed") {
+      fresh.turnStartedAt = nowIso();
+    }
     touchGame(fresh);
 
     if (chess.isGameOver()) {
@@ -818,7 +919,8 @@ app.post("/api/lobby/queue/join", authMiddleware, (req, res) => {
     return res.status(409).json({ error: "You are already in game" });
   }
 
-  const table = createOpenTable(user.id);
+  const gameMode = normalizeGameMode(req.body?.gameMode);
+  const table = createOpenTable(user.id, { gameMode });
   emitWaitingList();
   emitPresence();
 
@@ -856,7 +958,9 @@ app.post("/api/lobby/queue/join-user", authMiddleware, (req, res) => {
     return res.status(409).json({ error: "One of users is already in game" });
   }
 
-  const game = createAndStartGame(targetTable.ownerUserId, user.id);
+  const game = createAndStartGame(targetTable.ownerUserId, user.id, {
+    gameMode: normalizeGameMode(targetTable.gameMode),
+  });
   if (!game) {
     return res.status(409).json({ error: "Failed to create game" });
   }
@@ -876,6 +980,7 @@ app.post("/api/training/bot/start", authMiddleware, (req, res) => {
     whiteUserId: user.id,
     blackUserId: TRAINING_BOT_USER_ID,
     rated: false,
+    gameMode: "untimed",
   });
   if (!game) {
     return res.status(409).json({ error: "Failed to create game" });
@@ -1175,6 +1280,12 @@ io.on("connection", (socket) => {
       return;
     }
 
+    processTimedTurnTimeout(game);
+    if (game.status !== "active") {
+      socket.emit("game:state", buildGameState(game, userId));
+      return;
+    }
+
     const chess = new Chess(game.fenCurrent);
     const turnUserId = chess.turn() === "w" ? game.whiteUserId : game.blackUserId;
     if (turnUserId !== userId) {
@@ -1204,6 +1315,9 @@ io.on("connection", (socket) => {
     game.fenCurrent = chess.fen();
     game.pgn = chess.pgn();
     game.drawOfferBy = null;
+    if (normalizeGameMode(game.timeControlMode) === "timed") {
+      game.turnStartedAt = nowIso();
+    }
     touchGame(game);
 
     io.to(userRoom(game.whiteUserId)).emit("game:move:applied", {
@@ -1302,6 +1416,7 @@ io.on("connection", (socket) => {
         whiteUserId: userId,
         blackUserId: TRAINING_BOT_USER_ID,
         rated: false,
+        gameMode: "untimed",
       });
       if (newGame) {
         io.to(userRoom(userId)).emit("game:rematch:accepted", {
@@ -1325,6 +1440,7 @@ io.on("connection", (socket) => {
       const newGame = createAndStartGame(game.whiteUserId, game.blackUserId, {
         whiteUserId: game.blackUserId,
         blackUserId: game.whiteUserId,
+        gameMode: normalizeGameMode(game.timeControlMode),
       });
 
       if (newGame) {
@@ -1369,6 +1485,7 @@ function cryptoRandomId() {
 // ——— Запуск ———
 rebuildActiveGameMap();
 setInterval(cleanupChallenges, 10_000);
+setInterval(processTimedTurnTimeouts, 1000);
 
 server.listen(PORT, HOST, () => {
   const base = `http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`;

@@ -62,6 +62,36 @@ function initDb() {
       game.rated = true;
       changed = true;
     }
+    if (game.timeControlMode !== "timed" && game.timeControlMode !== "untimed") {
+      game.timeControlMode = "untimed";
+      changed = true;
+    }
+    if (game.timeControlMode === "timed") {
+      if (!Number.isFinite(Number(game.perMoveSeconds)) || Number(game.perMoveSeconds) <= 0) {
+        game.perMoveSeconds = 60;
+        changed = true;
+      }
+      if (!game.turnStartedAt) {
+        game.turnStartedAt = game.startedAt || nowIso();
+        changed = true;
+      }
+    } else {
+      if (game.perMoveSeconds != null) {
+        game.perMoveSeconds = null;
+        changed = true;
+      }
+      if (game.turnStartedAt != null) {
+        game.turnStartedAt = null;
+        changed = true;
+      }
+    }
+  }
+  for (const table of db.tables) {
+    if (!table || typeof table !== "object") continue;
+    if (table.gameMode !== "timed" && table.gameMode !== "untimed") {
+      table.gameMode = "untimed";
+      changed = true;
+    }
   }
   // One-time migration to tournament scoring (1 / 0.5 / 0).
   // Do not recalculate on every boot: it can make rating look unstable on deploys.
@@ -221,15 +251,24 @@ function getOpenTableByOwner(ownerUserId) {
   return listOpenTables().find((t) => t.ownerUserId === ownerUserId) || null;
 }
 
-function createOpenTable(ownerUserId) {
+function createOpenTable(ownerUserId, options = {}) {
   const dbRef = getDb();
   const existing = getOpenTableByOwner(ownerUserId);
-  if (existing) return existing;
+  const gameMode = options.gameMode === "timed" ? "timed" : "untimed";
+  if (existing) {
+    if (existing.gameMode !== gameMode) {
+      existing.gameMode = gameMode;
+      existing.updatedAt = nowIso();
+      saveDb();
+    }
+    return existing;
+  }
 
   const now = nowIso();
   const table = {
     id: crypto.randomUUID(),
     ownerUserId,
+    gameMode,
     status: "open",
     createdAt: now,
     updatedAt: now,
@@ -267,7 +306,15 @@ function listActiveGames() {
   return getDb().games.filter((g) => g.status === "active");
 }
 
-function createGame({ whiteUserId, blackUserId, fen, rated = true }) {
+function createGame({
+  whiteUserId,
+  blackUserId,
+  fen,
+  rated = true,
+  timeControlMode = "untimed",
+  perMoveSeconds = null,
+  turnStartedAt = null,
+}) {
   const dbRef = getDb();
   const now = nowIso();
 
@@ -287,6 +334,9 @@ function createGame({ whiteUserId, blackUserId, fen, rated = true }) {
     rematchBy: [],
     statsApplied: false,
     rated: !!rated,
+    timeControlMode: timeControlMode === "timed" ? "timed" : "untimed",
+    perMoveSeconds: timeControlMode === "timed" ? Number(perMoveSeconds) || 60 : null,
+    turnStartedAt: timeControlMode === "timed" ? (turnStartedAt || now) : null,
     createdAt: now,
     updatedAt: now,
   };

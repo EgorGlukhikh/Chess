@@ -1,4 +1,4 @@
-const state = {
+﻿const state = {
   config: null,
   token: localStorage.getItem("chess_token") || "",
   me: null,
@@ -19,11 +19,12 @@ const state = {
   lobbyPollTimer: null,
   lobbyPollTick: 0,
   gamePollTimer: null,
+  turnTimerTick: null,
   skin: "classic",
   bannerTimer: null,
 };
 
-/** Telegram Mini App: доступен только при открытии из бота */
+/** Telegram Mini App: РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РїСЂРё РѕС‚РєСЂС‹С‚РёРё РёР· Р±РѕС‚Р° */
 function getTelegramWebApp() {
   return typeof window !== "undefined" && window.Telegram?.WebApp;
 }
@@ -35,25 +36,25 @@ const SKINS = {
   classic: {
     title: "Chess Mini App",
     banners: [
-      "Классический режим: спокойная турнирная атмосфера",
-      "Создавайте стол и ждите соперника в удобное время",
-      "Тренировки с ботом не влияют на рейтинг",
+      "РљР»Р°СЃСЃРёС‡РµСЃРєРёР№ СЂРµР¶РёРј: СЃРїРѕРєРѕР№РЅР°СЏ С‚СѓСЂРЅРёСЂРЅР°СЏ Р°С‚РјРѕСЃС„РµСЂР°",
+      "РЎРѕР·РґР°РІР°Р№С‚Рµ СЃС‚РѕР» Рё Р¶РґРёС‚Рµ СЃРѕРїРµСЂРЅРёРєР° РІ СѓРґРѕР±РЅРѕРµ РІСЂРµРјСЏ",
+      "РўСЂРµРЅРёСЂРѕРІРєРё СЃ Р±РѕС‚РѕРј РЅРµ РІР»РёСЏСЋС‚ РЅР° СЂРµР№С‚РёРЅРі",
     ],
   },
   feb23: {
-    title: "23 февраля",
+    title: "23 С„РµРІСЂР°Р»СЏ",
     banners: [
-      "С праздником! Сила стратегии и характер победителя",
-      "Боевой настрой: защита, контратака и точный расчет",
-      "Праздничный скин активен. Играйте и побеждайте",
+      "РЎ РїСЂР°Р·РґРЅРёРєРѕРј! РЎРёР»Р° СЃС‚СЂР°С‚РµРіРёРё Рё С…Р°СЂР°РєС‚РµСЂ РїРѕР±РµРґРёС‚РµР»СЏ",
+      "Р‘РѕРµРІРѕР№ РЅР°СЃС‚СЂРѕР№: Р·Р°С‰РёС‚Р°, РєРѕРЅС‚СЂР°С‚Р°РєР° Рё С‚РѕС‡РЅС‹Р№ СЂР°СЃС‡РµС‚",
+      "РџСЂР°Р·РґРЅРёС‡РЅС‹Р№ СЃРєРёРЅ Р°РєС‚РёРІРµРЅ. РРіСЂР°Р№С‚Рµ Рё РїРѕР±РµР¶РґР°Р№С‚Рµ",
     ],
   },
   mar8: {
-    title: "8 марта",
+    title: "8 РјР°СЂС‚Р°",
     banners: [
-      "Весенний режим: играйте спокойно и в своем темпе",
-      "Зелено-розовая тема активна",
-      "Добавляйте сезонные темы в профиле",
+      "Р’РµСЃРµРЅРЅРёР№ СЂРµР¶РёРј: РёРіСЂР°Р№С‚Рµ СЃРїРѕРєРѕР№РЅРѕ Рё РІ СЃРІРѕРµРј С‚РµРјРїРµ",
+      "Р—РµР»РµРЅРѕ-СЂРѕР·РѕРІР°СЏ С‚РµРјР° Р°РєС‚РёРІРЅР°",
+      "Р”РѕР±Р°РІР»СЏР№С‚Рµ СЃРµР·РѕРЅРЅС‹Рµ С‚РµРјС‹ РІ РїСЂРѕС„РёР»Рµ",
     ],
   },
 };
@@ -62,8 +63,8 @@ function applyTheme(theme) {
   const next = theme === "dark" ? "dark" : "light";
   document.documentElement.setAttribute("data-theme", next);
   if (refs.themeToggle) {
-    refs.themeToggle.textContent = next === "dark" ? "☀️" : "🌙";
-    refs.themeToggle.setAttribute("title", next === "dark" ? "Светлая тема" : "Тёмная тема");
+    refs.themeToggle.textContent = next === "dark" ? "вЂпёЏ" : "рџЊ™";
+    refs.themeToggle.setAttribute("title", next === "dark" ? "РЎРІРµС‚Р»Р°СЏ С‚РµРјР°" : "РўС‘РјРЅР°СЏ С‚РµРјР°");
   }
   try {
     localStorage.setItem(THEME_KEY, next);
@@ -151,18 +152,18 @@ function initTelegramWebApp() {
 }
 
 const PIECES = {
-  p: "♟",
-  r: "♜",
-  n: "♞",
-  b: "♝",
-  q: "♛",
-  k: "♚",
-  P: "♙",
-  R: "♖",
-  N: "♘",
-  B: "♗",
-  Q: "♕",
-  K: "♔",
+  p: "в™џ",
+  r: "в™њ",
+  n: "в™ћ",
+  b: "в™ќ",
+  q: "в™›",
+  k: "в™љ",
+  P: "в™™",
+  R: "в™–",
+  N: "в™",
+  B: "в™—",
+  Q: "в™•",
+  K: "в™”",
 };
 
 const FILES = "abcdefgh";
@@ -197,11 +198,13 @@ const refs = {
   drawAcceptBtn: document.getElementById("drawAcceptBtn"),
   drawDeclineBtn: document.getElementById("drawDeclineBtn"),
   moveList: document.getElementById("moveList"),
+  gameTurnTimer: document.getElementById("gameTurnTimer"),
   profileStats: document.getElementById("profileStats"),
   leadersInfo: document.getElementById("leadersInfo"),
   leadersTable: document.getElementById("leadersTable"),
   historyList: document.getElementById("historyList"),
-  joinQueueBtn: document.getElementById("joinQueueBtn"),
+  joinQueueTimedBtn: document.getElementById("joinQueueTimedBtn"),
+  joinQueueUntimedBtn: document.getElementById("joinQueueUntimedBtn"),
   startBotGameBtn: document.getElementById("startBotGameBtn"),
   leaveQueueBtn: document.getElementById("leaveQueueBtn"),
   offerDrawBtn: document.getElementById("offerDrawBtn"),
@@ -354,13 +357,53 @@ function formatDayLabel(day) {
   return `${m[3]}.${m[2]}`;
 }
 
+function queueModeLabel(mode) {
+  return mode === "timed" ? "РЅР° РІСЂРµРјСЏ (60СЃ/С…РѕРґ)" : "Р±РµР· РІСЂРµРјРµРЅРё";
+}
+
+function gameModeLabel(mode) {
+  return mode === "timed" ? "Р РµР¶РёРј: РЅР° РІСЂРµРјСЏ (60СЃ/С…РѕРґ)" : "Р РµР¶РёРј: Р±РµР· РІСЂРµРјРµРЅРё";
+}
+
+function stopTurnTimer() {
+  if (state.turnTimerTick) {
+    clearInterval(state.turnTimerTick);
+    state.turnTimerTick = null;
+  }
+}
+
+function renderTurnTimer(game) {
+  if (!refs.gameTurnTimer) return;
+
+  if (!game || game.status !== "active" || game.timeControlMode !== "timed" || !game.turnDeadlineAt) {
+    stopTurnTimer();
+    refs.gameTurnTimer.classList.add("hidden");
+    refs.gameTurnTimer.textContent = "";
+    return;
+  }
+
+  const update = () => {
+    const remainingMs = new Date(game.turnDeadlineAt).getTime() - Date.now();
+    const seconds = Math.max(0, Math.ceil(remainingMs / 1000));
+    refs.gameTurnTimer.textContent = `РўР°Р№РјРµСЂ С…РѕРґР°: ${seconds}СЃ`;
+    refs.gameTurnTimer.classList.remove("hidden");
+    if (seconds <= 0) {
+      refs.gameTurnTimer.textContent = "РўР°Р№РјРµСЂ С…РѕРґР°: 0СЃ (РѕР¶РёРґР°РµРј РїРµСЂРµРєР»СЋС‡РµРЅРёРµ С…РѕРґР°)";
+    }
+  };
+
+  update();
+  stopTurnTimer();
+  state.turnTimerTick = setInterval(update, 1000);
+}
+
 function escapeAttr(str) {
   return escapeHtml(str).replaceAll("`", "&#096;");
 }
 
 function renderWaiting() {
   if (!state.waiting.length) {
-    refs.waitingList.innerHTML = '<div class="muted">Сейчас очередь пустая</div>';
+    refs.waitingList.innerHTML = '<div class="muted">РЎРµР№С‡Р°СЃ РѕС‡РµСЂРµРґСЊ РїСѓСЃС‚Р°СЏ</div>';
     return;
   }
 
@@ -373,7 +416,7 @@ function renderWaiting() {
     const left = document.createElement("div");
     left.innerHTML = `
       <div>${userNameHtml(user)} ${user.id === state.me?.id ? "(you)" : ""}</div>
-      <div class="meta">${escapeHtml(statusLabel(user.status))}</div>
+      <div class="meta">${escapeHtml(statusLabel(user.status))} | ${escapeHtml(queueModeLabel(user.gameMode))}</div>
     `;
 
     item.appendChild(left);
@@ -405,7 +448,7 @@ function renderWaiting() {
 
 function renderIncomingChallenges() {
   if (!state.incomingChallenges.length) {
-    refs.incomingChallenges.innerHTML = '<div class="muted">Нет входящих вызовов</div>';
+    refs.incomingChallenges.innerHTML = '<div class="muted">РќРµС‚ РІС…РѕРґСЏС‰РёС… РІС‹Р·РѕРІРѕРІ</div>';
     return;
   }
 
@@ -418,7 +461,7 @@ function renderIncomingChallenges() {
     const left = document.createElement("div");
     left.innerHTML = `
       <div>${userNameHtml(challenge.fromUser)}</div>
-      <div class="meta">Вызов в партию</div>
+      <div class="meta">Р’С‹Р·РѕРІ РІ РїР°СЂС‚РёСЋ</div>
     `;
 
     const controls = document.createElement("div");
@@ -426,12 +469,12 @@ function renderIncomingChallenges() {
 
     const acceptBtn = document.createElement("button");
     acceptBtn.className = "primary";
-    acceptBtn.textContent = "Принять";
+    acceptBtn.textContent = "РџСЂРёРЅСЏС‚СЊ";
     acceptBtn.onclick = () => respondChallenge(challenge.id, true);
 
     const rejectBtn = document.createElement("button");
     rejectBtn.className = "ghost";
-    rejectBtn.textContent = "Отклонить";
+    rejectBtn.textContent = "РћС‚РєР»РѕРЅРёС‚СЊ";
     rejectBtn.onclick = () => respondChallenge(challenge.id, false);
 
     controls.appendChild(acceptBtn);
@@ -469,47 +512,53 @@ function renderGame() {
   const game = state.activeGame;
 
   if (!game) {
-    refs.gameMeta.textContent = "Нет активной партии";
+    refs.gameMeta.textContent = "РќРµС‚ Р°РєС‚РёРІРЅРѕР№ РїР°СЂС‚РёРё";
     refs.board.innerHTML = "";
     if (refs.boardAxisRanks) refs.boardAxisRanks.innerHTML = "";
     if (refs.boardAxisFiles) refs.boardAxisFiles.innerHTML = "";
-    refs.moveList.innerHTML = '<div class="muted">Ходы появятся после старта партии</div>';
+    refs.moveList.innerHTML = '<div class="muted">РҐРѕРґС‹ РїРѕСЏРІСЏС‚СЃСЏ РїРѕСЃР»Рµ СЃС‚Р°СЂС‚Р° РїР°СЂС‚РёРё</div>';
     if (refs.gamePlayersStrip) refs.gamePlayersStrip.classList.add("hidden");
+    stopTurnTimer();
+    if (refs.gameTurnTimer) {
+      refs.gameTurnTimer.classList.add("hidden");
+      refs.gameTurnTimer.textContent = "";
+    }
     return;
   }
 
-  const white = game.players?.white?.displayName || "Белые";
-  const black = game.players?.black?.displayName || "Черные";
+  const white = game.players?.white?.displayName || "Р‘РµР»С‹Рµ";
+  const black = game.players?.black?.displayName || "Р§РµСЂРЅС‹Рµ";
   const opponent = game.viewerColor === "white" ? black : white;
-  const viewerSide = game.viewerColor === "white" ? "белые" : "черные";
+  const viewerSide = game.viewerColor === "white" ? "Р±РµР»С‹Рµ" : "С‡РµСЂРЅС‹Рµ";
 
-  const turnText = game.status === "active" ? `Ход: ${game.turnColor === "white" ? "белые" : "черные"}` : "Партия завершена";
-  const statusText = game.status === "active" ? (isMyTurn(game) ? "Ваш ход" : "Ход соперника") : game.finishReason || "finished";
+  const turnText = game.status === "active" ? `РҐРѕРґ: ${game.turnColor === "white" ? "Р±РµР»С‹Рµ" : "С‡РµСЂРЅС‹Рµ"}` : "РџР°СЂС‚РёСЏ Р·Р°РІРµСЂС€РµРЅР°";
+  const statusText = game.status === "active" ? (isMyTurn(game) ? "Р’Р°С€ С…РѕРґ" : "РҐРѕРґ СЃРѕРїРµСЂРЅРёРєР°") : game.finishReason || "finished";
 
-  refs.gameMeta.textContent = `Вы: ${viewerSide} | Соперник: ${opponent} | ${turnText} | ${statusText}`;
+  refs.gameMeta.textContent = `Р’С‹: ${viewerSide} | РЎРѕРїРµСЂРЅРёРє: ${opponent} | ${turnText} | ${statusText} | ${gameModeLabel(game.timeControlMode)}`;
+  renderTurnTimer(game);
 
   if (refs.gamePlayersStrip) {
     refs.gamePlayersStrip.classList.remove("hidden");
     const white = game.players?.white;
     const black = game.players?.black;
-    const whiteName = white?.displayName || "Белые";
-    const blackName = black?.displayName || "Черные";
+    const whiteName = white?.displayName || "Р‘РµР»С‹Рµ";
+    const blackName = black?.displayName || "Р§РµСЂРЅС‹Рµ";
     if (refs.playerWhiteAvatar) {
       refs.playerWhiteAvatar.innerHTML = white?.avatarUrl
         ? `<img src="${escapeHtml(white.avatarUrl)}" alt="">`
-        : `<span class="avatar-initial">${escapeHtml((whiteName[0] || "Б").toUpperCase())}</span>`;
+        : `<span class="avatar-initial">${escapeHtml((whiteName[0] || "Р‘").toUpperCase())}</span>`;
     }
     if (refs.playerWhiteName) refs.playerWhiteName.innerHTML = userNameHtml(white, whiteName);
     if (refs.playerBlackAvatar) {
       refs.playerBlackAvatar.innerHTML = black?.avatarUrl
         ? `<img src="${escapeHtml(black.avatarUrl)}" alt="">`
-        : `<span class="avatar-initial">${escapeHtml((blackName[0] || "Ч").toUpperCase())}</span>`;
+        : `<span class="avatar-initial">${escapeHtml((blackName[0] || "Р§").toUpperCase())}</span>`;
     }
     if (refs.playerBlackName) refs.playerBlackName.innerHTML = userNameHtml(black, blackName);
     if (refs.playerTurnBadge) {
       refs.playerTurnBadge.textContent = game.status === "active"
-        ? (game.turnColor === "white" ? "Ход белых" : "Ход черных")
-        : "Партия завершена";
+        ? (game.turnColor === "white" ? "РҐРѕРґ Р±РµР»С‹С…" : "РҐРѕРґ С‡РµСЂРЅС‹С…")
+        : "РџР°СЂС‚РёСЏ Р·Р°РІРµСЂС€РµРЅР°";
     }
   }
 
@@ -566,7 +615,7 @@ function renderGame() {
   const moveRows = (game.moves || []).map((m) => {
     return `<div class="move-row">${m.moveNo}. ${escapeHtml(m.san)} (${m.uci})</div>`;
   });
-  refs.moveList.innerHTML = moveRows.length ? moveRows.join("") : '<div class="muted">Пока нет ходов</div>';
+  refs.moveList.innerHTML = moveRows.length ? moveRows.join("") : '<div class="muted">РџРѕРєР° РЅРµС‚ С…РѕРґРѕРІ</div>';
 
   refs.offerDrawBtn.disabled = game.status !== "active";
   refs.resignBtn.disabled = game.status !== "active";
@@ -809,7 +858,7 @@ async function respondChallenge(challengeId, accept) {
     });
     state.incomingChallenges = state.incomingChallenges.filter((c) => c.id !== challengeId);
     renderIncomingChallenges();
-    showNotice(accept ? "Вызов принят" : "Вызов отклонен");
+    showNotice(accept ? "Р’С‹Р·РѕРІ РїСЂРёРЅСЏС‚" : "Р’С‹Р·РѕРІ РѕС‚РєР»РѕРЅРµРЅ");
   } catch (err) {
     showNotice(err.message);
   }
@@ -872,7 +921,7 @@ async function refreshMe() {
   state.me = data.user;
   state.stats = data.stats;
   state.isAdmin = !!data.isAdmin;
-  refs.whoami.textContent = state.me.displayName + " · " + statusLabel(data.status);
+  refs.whoami.textContent = state.me.displayName + " В· " + statusLabel(data.status);
   renderProfile();
 }
 
@@ -953,15 +1002,15 @@ function connectSocket() {
   state.socket.on("lobby:challenge:incoming", (challenge) => {
     state.incomingChallenges = [...state.incomingChallenges.filter((c) => c.id !== challenge.id), challenge];
     renderIncomingChallenges();
-    showNotice(`Вызов от ${challenge.fromUser.displayName}`);
+    showNotice(`Р’С‹Р·РѕРІ РѕС‚ ${challenge.fromUser.displayName}`);
   });
 
   state.socket.on("lobby:challenge:declined", (payload) => {
-    showNotice(`Вызов отклонен: ${payload.byUser.displayName}`);
+    showNotice(`Р’С‹Р·РѕРІ РѕС‚РєР»РѕРЅРµРЅ: ${payload.byUser.displayName}`);
   });
 
   state.socket.on("match:found", (match) => {
-    showNotice(`Матч найден. Ваш цвет: ${match.color}`);
+    showNotice(`РњР°С‚С‡ РЅР°Р№РґРµРЅ. Р’Р°С€ С†РІРµС‚: ${match.color}`);
     setView("game");
     openGameFromHistory(match.gameId);
   });
@@ -976,7 +1025,7 @@ function connectSocket() {
     state.activeGame = game;
     state.selectedSquare = null;
     renderGame();
-    showNotice(`Партия завершена: ${game.finishReason}`);
+    showNotice(`РџР°СЂС‚РёСЏ Р·Р°РІРµСЂС€РµРЅР°: ${game.finishReason}`);
 
     try {
       await Promise.all([refreshMe(), loadGlobalLeaders(), loadDailyLeaders(), loadHistory()]);
@@ -986,17 +1035,26 @@ function connectSocket() {
   });
 
   state.socket.on("game:draw:offer", () => {
-    showNotice("Соперник предложил ничью");
+    showNotice("РЎРѕРїРµСЂРЅРёРє РїСЂРµРґР»РѕР¶РёР» РЅРёС‡СЊСЋ");
   });
 
   state.socket.on("game:rematch:offer", () => {
-    showNotice("Соперник предложил реванш");
+    showNotice("РЎРѕРїРµСЂРЅРёРє РїСЂРµРґР»РѕР¶РёР» СЂРµРІР°РЅС€");
   });
 
   state.socket.on("game:rematch:accepted", (payload) => {
-    showNotice("Реванш начался");
+    showNotice("Р РµРІР°РЅС€ РЅР°С‡Р°Р»СЃСЏ");
     openGameFromHistory(payload.newGameId);
     setView("game");
+  });
+
+  state.socket.on("game:turn:timeout", (payload) => {
+    if (!state.me) return;
+    if (payload?.timedOutUserId === state.me.id) {
+      showNotice("Р’СЂРµРјСЏ РЅР° С…РѕРґ РёСЃС‚РµРєР»Рѕ, С…РѕРґ РїРµСЂРµРґР°РЅ СЃРѕРїРµСЂРЅРёРєСѓ");
+    } else {
+      showNotice("Р’СЂРµРјСЏ СЃРѕРїРµСЂРЅРёРєР° РёСЃС‚РµРєР»Рѕ, С…РѕРґ РїРµСЂРµС€РµР» РІР°Рј");
+    }
   });
 
   state.socket.on("error:message", (payload) => {
@@ -1054,10 +1112,10 @@ function startGamePolling() {
   }, 4000);
 }
 
-async function joinQueue() {
+async function joinQueue(gameMode = "untimed") {
   try {
-    await api("/api/lobby/queue/join", { method: "POST" });
-    showNotice("Table created. Waiting for opponent");
+    await api("/api/lobby/queue/join", { method: "POST", body: { gameMode } });
+    showNotice(gameMode === "timed" ? "Queue: timed mode (60s per turn)" : "Queue: untimed mode");
   } catch (err) {
     showNotice(err.message);
   }
@@ -1078,7 +1136,7 @@ async function startBotTrainingGame() {
 async function leaveQueue() {
   try {
     await api("/api/lobby/queue/leave", { method: "POST" });
-    showNotice("Вы вышли из очереди");
+    showNotice("Р’С‹ РІС‹С€Р»Рё РёР· РѕС‡РµСЂРµРґРё");
   } catch (err) {
     showNotice(err.message);
   }
@@ -1088,7 +1146,7 @@ function wireEvents() {
   refs.devLoginBtn.addEventListener("click", async () => {
     const displayName = refs.devName.value.trim();
     if (!displayName) {
-      showNotice("Введите имя");
+      showNotice("Р’РІРµРґРёС‚Рµ РёРјСЏ");
       return;
     }
 
@@ -1103,7 +1161,12 @@ function wireEvents() {
     }
   });
 
-  refs.joinQueueBtn.addEventListener("click", joinQueue);
+  if (refs.joinQueueTimedBtn) {
+    refs.joinQueueTimedBtn.addEventListener("click", () => joinQueue("timed"));
+  }
+  if (refs.joinQueueUntimedBtn) {
+    refs.joinQueueUntimedBtn.addEventListener("click", () => joinQueue("untimed"));
+  }
   refs.startBotGameBtn.addEventListener("click", startBotTrainingGame);
   refs.leaveQueueBtn.addEventListener("click", leaveQueue);
 
@@ -1127,14 +1190,14 @@ function wireEvents() {
 
   refs.resignBtn.addEventListener("click", () => {
     if (!state.activeGame || state.activeGame.status !== "active") return;
-    if (!window.confirm("Подтвердить сдачу партии?")) return;
+    if (!window.confirm("РџРѕРґС‚РІРµСЂРґРёС‚СЊ СЃРґР°С‡Сѓ РїР°СЂС‚РёРё?")) return;
     state.socket.emit("game:resign", { gameId: state.activeGame.id });
   });
 
   refs.rematchBtn.addEventListener("click", () => {
     if (!state.activeGame || state.activeGame.status !== "finished") return;
     state.socket.emit("game:rematch:offer", { gameId: state.activeGame.id });
-    showNotice("Предложение реванша отправлено");
+    showNotice("РџСЂРµРґР»РѕР¶РµРЅРёРµ СЂРµРІР°РЅС€Р° РѕС‚РїСЂР°РІР»РµРЅРѕ");
   });
 
   if (refs.themeToggle) {
@@ -1246,10 +1309,10 @@ function escapeHtml(str) {
 
 function statusLabel(status) {
   const labels = {
-    online: "в сети",
-    offline: "не в сети",
-    in_queue: "в очереди",
-    in_game: "в игре",
+    online: "РІ СЃРµС‚Рё",
+    offline: "РЅРµ РІ СЃРµС‚Рё",
+    in_queue: "РІ РѕС‡РµСЂРµРґРё",
+    in_game: "РІ РёРіСЂРµ",
   };
   return labels[String(status)] || status;
 }
@@ -1267,24 +1330,24 @@ async function bootstrap() {
   try {
     state.config = await api("/api/config");
   } catch (err) {
-    setAuthStatus(`Ошибка конфигурации: ${err.message}`);
+    setAuthStatus(`РћС€РёР±РєР° РєРѕРЅС„РёРіСѓСЂР°С†РёРё: ${err.message}`);
     return;
   }
 
-  setAuthStatus("Проверка авторизации...");
+  setAuthStatus("РџСЂРѕРІРµСЂРєР° Р°РІС‚РѕСЂРёР·Р°С†РёРё...");
   const byToken = await tryLoginByStoredToken();
   if (byToken) return;
 
-  setAuthStatus("Пробуем вход через Telegram...");
+  setAuthStatus("РџСЂРѕР±СѓРµРј РІС…РѕРґ С‡РµСЂРµР· Telegram...");
   const byTelegram = await tryTelegramLogin();
   if (byTelegram) return;
 
   if (state.config.allowDevAuth) {
-    setAuthStatus("Dev auth включен: введите имя");
+    setAuthStatus("Dev auth РІРєР»СЋС‡РµРЅ: РІРІРµРґРёС‚Рµ РёРјСЏ");
     refs.devAuthBlock.classList.remove("hidden");
     refs.devName.focus();
   } else {
-    setAuthStatus("Откройте приложение внутри Telegram для входа");
+    setAuthStatus("РћС‚РєСЂРѕР№С‚Рµ РїСЂРёР»РѕР¶РµРЅРёРµ РІРЅСѓС‚СЂРё Telegram РґР»СЏ РІС…РѕРґР°");
   }
 }
 
