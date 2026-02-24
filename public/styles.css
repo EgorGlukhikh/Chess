@@ -363,20 +363,20 @@ html[data-skin="mar8"] .skin-banner::after {
 
 .nav {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
 }
 
 .tab {
   min-width: 0;
-  font-size: 0.7rem;
-  padding: 8px 4px;
+  font-size: 0.82rem;
+  padding: 8px 6px;
   border: 1px solid var(--border);
   background: var(--tab-bg);
   color: var(--ink);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  line-height: 1.1;
+  text-align: center;
   transition: background 0.2s ease, color 0.2s ease;
 }
 
