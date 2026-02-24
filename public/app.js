@@ -49,11 +49,11 @@ const SKINS = {
     ],
   },
   mar8: {
-    title: "8 March",
+    title: "8 марта",
     banners: [
-      "Spring mode: calm games and flexible pace",
-      "Green and pink palette is active",
-      "You can add more seasonal themes in profile",
+      "Весенний режим: играйте спокойно и в своем темпе",
+      "Зелено-розовая тема активна",
+      "Добавляйте сезонные темы в профиле",
     ],
   },
 };
