@@ -23,6 +23,8 @@
   turnTimerTick: null,
   skin: "classic",
   bannerTimer: null,
+  pendingInviteId: "",
+  consumedInviteId: "",
 };
 
 /** Telegram Mini App: available only when opened from Telegram bot */
@@ -216,6 +218,7 @@ const refs = {
   tournamentSummary: document.getElementById("tournamentSummary"),
   joinQueueTimedBtn: document.getElementById("joinQueueTimedBtn"),
   joinQueueUntimedBtn: document.getElementById("joinQueueUntimedBtn"),
+  inviteFriendBtn: document.getElementById("inviteFriendBtn"),
   startBotGameBtn: document.getElementById("startBotGameBtn"),
   leaveQueueBtn: document.getElementById("leaveQueueBtn"),
   offerDrawBtn: document.getElementById("offerDrawBtn"),
@@ -304,6 +307,146 @@ async function api(path, options = {}) {
   }
 
   return payload;
+}
+
+function normalizeInviteId(value) {
+  const inviteId = String(value || "").trim();
+  return /^[a-z0-9_-]{6,120}$/i.test(inviteId) ? inviteId : "";
+}
+
+function parseInviteStartParam(raw) {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  if (value.startsWith("inv_")) {
+    return normalizeInviteId(value.slice(4));
+  }
+  return "";
+}
+
+function resolveInviteIdFromUrlAndTelegram() {
+  const tg = getTelegramWebApp();
+  const tgStart = parseInviteStartParam(tg?.initDataUnsafe?.start_param || "");
+  if (tgStart) return tgStart;
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const fromSearchStart = parseInviteStartParam(searchParams.get("tgWebAppStartParam") || searchParams.get("startapp"));
+  if (fromSearchStart) return fromSearchStart;
+
+  const fromSearch = normalizeInviteId(searchParams.get("invite"));
+  if (fromSearch) return fromSearch;
+
+  const rawHash = String(window.location.hash || "");
+  if (rawHash.startsWith("#")) {
+    const hashParams = new URLSearchParams(rawHash.slice(1));
+    const fromHashStart = parseInviteStartParam(hashParams.get("tgWebAppStartParam") || hashParams.get("startapp"));
+    if (fromHashStart) return fromHashStart;
+
+    const fromHash = normalizeInviteId(hashParams.get("invite"));
+    if (fromHash) return fromHash;
+  }
+
+  return "";
+}
+
+function clearInviteFromUrl() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("invite")) return;
+  url.searchParams.delete("invite");
+  window.history.replaceState({}, "", url.toString());
+}
+
+function myQueueGameMode() {
+  if (!state.me) return "untimed";
+  const meRow = (state.waiting || []).find((w) => w.id === state.me.id);
+  return normalizeGameMode(meRow?.gameMode);
+}
+
+function normalizeGameMode(value) {
+  return String(value || "").trim() === "timed" ? "timed" : "untimed";
+}
+
+function buildInviteLaunchUrl(inviteId) {
+  const safeInviteId = normalizeInviteId(inviteId);
+  if (!safeInviteId) return "";
+
+  const botUsername = String(state.config?.telegramBotUsername || "").trim().replace(/^@+/, "");
+  const miniAppShortName = String(state.config?.telegramMiniAppShortName || "")
+    .trim()
+    .replace(/^\/+|\/+$/g, "");
+  if (botUsername && miniAppShortName) {
+    return `https://t.me/${botUsername}/${miniAppShortName}?startapp=${encodeURIComponent(`inv_${safeInviteId}`)}`;
+  }
+
+  const fallbackBase = `${window.location.origin}${window.location.pathname}`;
+  const base = String(state.config?.webAppUrl || "").trim() || fallbackBase;
+  try {
+    const launchUrl = new URL(base);
+    launchUrl.searchParams.set("invite", safeInviteId);
+    return launchUrl.toString();
+  } catch {
+    const launchUrl = new URL(fallbackBase);
+    launchUrl.searchParams.set("invite", safeInviteId);
+    return launchUrl.toString();
+  }
+}
+
+async function inviteFriend() {
+  if (!state.me) return;
+
+  try {
+    const gameMode = myQueueGameMode();
+    const data = await api("/api/invite/create", {
+      method: "POST",
+      body: { gameMode },
+    });
+
+    if (Array.isArray(data?.waiting)) {
+      state.waiting = data.waiting;
+      renderWaiting();
+    }
+
+    const launchUrl = buildInviteLaunchUrl(data.inviteId);
+    if (!launchUrl) {
+      showNotice("Не удалось сформировать ссылку приглашения");
+      return;
+    }
+
+    const shareText = "Заходи сыграть со мной в шахматы";
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(launchUrl)}&text=${encodeURIComponent(shareText)}`;
+    const tg = getTelegramWebApp();
+    if (tg?.openTelegramLink) {
+      tg.openTelegramLink(shareUrl);
+    } else {
+      window.open(shareUrl, "_blank", "noopener,noreferrer");
+    }
+  } catch (err) {
+    showNotice(err.message);
+  }
+}
+
+async function consumePendingInvite() {
+  const inviteId = normalizeInviteId(state.pendingInviteId);
+  if (!inviteId) return false;
+  if (state.consumedInviteId === inviteId) return false;
+  state.consumedInviteId = inviteId;
+
+  try {
+    const data = await api("/api/invite/accept", {
+      method: "POST",
+      body: { inviteId },
+    });
+    state.pendingInviteId = "";
+    clearInviteFromUrl();
+
+    if (data?.gameId) {
+      await openGameFromHistory(data.gameId);
+      showNotice("Матч по приглашению запущен");
+      return true;
+    }
+  } catch (err) {
+    showNotice(`Приглашение: ${err.message}`);
+  }
+  return false;
 }
 
 function fenToSquareMap(fen) {
@@ -1277,6 +1420,9 @@ function wireEvents() {
   if (refs.joinQueueUntimedBtn) {
     refs.joinQueueUntimedBtn.addEventListener("click", () => joinQueue("untimed"));
   }
+  if (refs.inviteFriendBtn) {
+    refs.inviteFriendBtn.addEventListener("click", inviteFriend);
+  }
   refs.startBotGameBtn.addEventListener("click", startBotTrainingGame);
   refs.leaveQueueBtn.addEventListener("click", leaveQueue);
 
@@ -1345,7 +1491,10 @@ async function onAuthenticated(authResponse) {
   startGamePolling();
   renderIncomingChallenges();
   renderGame();
-  setView("lobby");
+  const openedByInvite = await consumePendingInvite();
+  if (!openedByInvite) {
+    setView("lobby");
+  }
 }
 
 async function tryLoginByStoredToken() {
@@ -1434,6 +1583,7 @@ async function bootstrap() {
   initSkin();
   initTelegramWebApp();
   initTheme();
+  state.pendingInviteId = resolveInviteIdFromUrlAndTelegram();
 
   wireEvents();
   renderIncomingChallenges();

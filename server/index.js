@@ -38,6 +38,11 @@ const HOST = process.env.HOST || "0.0.0.0";
 const JWT_SECRET = process.env.JWT_SECRET || "change-me";
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const APP_TIMEZONE = process.env.APP_TIMEZONE || "Europe/Moscow";
+const WEBAPP_URL = String(process.env.WEBAPP_URL || "").trim();
+const TELEGRAM_BOT_USERNAME = String(process.env.TELEGRAM_BOT_USERNAME || "").trim().replace(/^@+/, "");
+const TELEGRAM_MINI_APP_SHORT_NAME = String(process.env.TELEGRAM_MINI_APP_SHORT_NAME || "")
+  .trim()
+  .replace(/^\/+|\/+$/g, "");
 const ALLOW_DEV_AUTH = String(process.env.ALLOW_DEV_AUTH || "true").toLowerCase() === "true";
 const ADMIN_TG_IDS = new Set(
   String(process.env.ADMIN_TG_IDS || "")
@@ -77,10 +82,12 @@ const io = new Server(server, {
 });
 
 const challenges = new Map();
+const invites = new Map();
 const onlineSocketsByUser = new Map();
 const activeGameByUser = new Map();
 const TIMED_MOVE_SECONDS = 60;
 const TOURNAMENT_SIZE = 4;
+const INVITE_TTL_MS = 60 * 60 * 1000;
 
 function nowIso() {
   return new Date().toISOString();
@@ -191,6 +198,28 @@ function clearUserChallenges(userId) {
       challenges.delete(id);
     }
   }
+}
+
+function cleanupInvites() {
+  const currentTs = Date.now();
+  for (const [id, invite] of invites.entries()) {
+    if (!invite || invite.expiresAt <= currentTs) {
+      invites.delete(id);
+    }
+  }
+}
+
+function clearUserInvites(userId) {
+  for (const [id, invite] of invites.entries()) {
+    if (invite && invite.fromUserId === userId) {
+      invites.delete(id);
+    }
+  }
+}
+
+function getInviteById(inviteId) {
+  cleanupInvites();
+  return invites.get(inviteId) || null;
 }
 
 function getWaitingList() {
@@ -425,6 +454,8 @@ function createAndStartGame(firstUserId, secondUserId, options = {}) {
   removeFromQueue(secondUserId);
   clearUserChallenges(firstUserId);
   clearUserChallenges(secondUserId);
+  clearUserInvites(firstUserId);
+  clearUserInvites(secondUserId);
 
   const game = createGame({
     whiteUserId,
@@ -1094,6 +1125,9 @@ app.get("/api/config", (_req, res) => {
   res.json({
     allowDevAuth: ALLOW_DEV_AUTH,
     timezone: APP_TIMEZONE,
+    webAppUrl: WEBAPP_URL || null,
+    telegramBotUsername: TELEGRAM_BOT_USERNAME || null,
+    telegramMiniAppShortName: TELEGRAM_MINI_APP_SHORT_NAME || null,
   });
 });
 
@@ -1286,6 +1320,94 @@ app.post("/api/tournament/register", authMiddleware, (req, res) => {
   return res.json({ ok: true, tournament: buildTournamentPublic() });
 });
 
+app.post("/api/invite/create", authMiddleware, (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!ensureUserCanStartRegularGame(user.id, res)) return;
+
+  if (isInGame(user.id)) {
+    return res.status(409).json({ error: "Finish your current game first" });
+  }
+
+  const gameMode = normalizeGameMode(req.body?.gameMode);
+  const table = createOpenTable(user.id, { gameMode });
+
+  clearUserInvites(user.id);
+  const inviteId = cryptoRandomId();
+  const invite = {
+    id: inviteId,
+    fromUserId: user.id,
+    gameMode: normalizeGameMode(table.gameMode),
+    createdAt: nowIso(),
+    expiresAt: Date.now() + INVITE_TTL_MS,
+  };
+  invites.set(inviteId, invite);
+
+  emitWaitingList();
+  emitPresence();
+
+  return res.json({
+    ok: true,
+    inviteId,
+    gameMode: invite.gameMode,
+    expiresAt: new Date(invite.expiresAt).toISOString(),
+    waiting: getWaitingList(),
+  });
+});
+
+app.post("/api/invite/accept", authMiddleware, (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!ensureUserCanStartRegularGame(user.id, res)) return;
+
+  const inviteId = String(req.body?.inviteId || "").trim();
+  if (!inviteId) {
+    return res.status(400).json({ error: "inviteId is required" });
+  }
+
+  const invite = getInviteById(inviteId);
+  if (!invite) {
+    return res.status(404).json({ error: "Invite not found or expired" });
+  }
+
+  if (invite.fromUserId === user.id) {
+    return res.status(400).json({ error: "Cannot accept your own invite" });
+  }
+
+  const inviter = getUserById(invite.fromUserId);
+  if (!inviter) {
+    invites.delete(inviteId);
+    return res.status(404).json({ error: "Inviter not found" });
+  }
+
+  if (!ensureUserCanStartRegularGame(inviter.id, res)) return;
+
+  if (isInGame(user.id)) {
+    return res.status(409).json({ error: "You are already in game" });
+  }
+  if (isInGame(inviter.id)) {
+    return res.status(409).json({ error: "Inviter is already in game" });
+  }
+
+  removeFromQueue(user.id);
+  const targetTable = getOpenTableByOwner(inviter.id);
+  if (!targetTable) {
+    invites.delete(inviteId);
+    return res.status(409).json({ error: "Invite is no longer active" });
+  }
+
+  const game = createAndStartGame(targetTable.ownerUserId, user.id, {
+    gameMode: normalizeGameMode(targetTable.gameMode),
+  });
+
+  if (!game) {
+    return res.status(409).json({ error: "Failed to create game by invite" });
+  }
+
+  invites.delete(inviteId);
+  return res.json({ ok: true, gameId: game.id });
+});
+
 app.get("/api/lobby/waiting", authMiddleware, (_req, res) => {
   res.json({ waiting: getWaitingList() });
 });
@@ -1383,6 +1505,7 @@ app.post("/api/lobby/queue/leave", authMiddleware, (req, res) => {
   if (!user) return;
 
   removeFromQueue(user.id);
+  clearUserInvites(user.id);
   emitWaitingList();
   emitPresence();
 
@@ -1879,6 +2002,7 @@ function cryptoRandomId() {
 rebuildActiveGameMap();
 ensureTournamentState();
 setInterval(cleanupChallenges, 10_000);
+setInterval(cleanupInvites, 15_000);
 setInterval(processTimedTurnTimeouts, 1000);
 
 server.listen(PORT, HOST, () => {
