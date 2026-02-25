@@ -252,10 +252,51 @@ function isParticipant(game, userId) {
   return game.whiteUserId === userId || game.blackUserId === userId;
 }
 
-function buildLegalMoves(game, viewerId) {
+function tryLoadChessFromFen(fen) {
+  const raw = String(fen || "").trim();
+  if (!raw) return null;
+  try {
+    return new Chess(raw);
+  } catch {
+    return null;
+  }
+}
+
+function recoverFenFromMoves(game) {
+  if (!game || !Array.isArray(game.moves)) return null;
+  for (let i = game.moves.length - 1; i >= 0; i -= 1) {
+    const fenAfter = game.moves[i] ? game.moves[i].fenAfter : null;
+    const chess = tryLoadChessFromFen(fenAfter);
+    if (chess) return chess.fen();
+  }
+  return null;
+}
+
+function ensureGameChess(game, source) {
+  const chess = tryLoadChessFromFen(game ? game.fenCurrent : null);
+  if (chess) return chess;
+
+  const recoveredFen = recoverFenFromMoves(game) || new Chess().fen();
+  const recoveredChess = new Chess(recoveredFen);
+  const previousFen = game ? String(game.fenCurrent || "") : "";
+
+  if (game && game.fenCurrent !== recoveredFen) {
+    game.fenCurrent = recoveredFen;
+    touchGame(game);
+  }
+
+  const gameId = game && game.id ? game.id : "unknown";
+  console.warn(
+    `[fen-recover] game=${gameId} source=${source} from="${previousFen}" to="${recoveredFen}"`,
+  );
+
+  return recoveredChess;
+}
+
+function buildLegalMoves(game, viewerId, chessState = null) {
   if (game.status !== "active") return {};
 
-  const chess = new Chess(game.fenCurrent);
+  const chess = chessState || ensureGameChess(game, "buildLegalMoves");
   const turn = chess.turn() === "w" ? game.whiteUserId : game.blackUserId;
   if (turn !== viewerId) return {};
 
@@ -282,7 +323,7 @@ function serializeMove(move) {
 }
 
 function buildGameState(game, viewerId) {
-  const chess = new Chess(game.fenCurrent);
+  const chess = ensureGameChess(game, "buildGameState");
   const viewer = publicUserById(viewerId);
   const white = publicUserById(game.whiteUserId);
   const black = publicUserById(game.blackUserId);
@@ -328,7 +369,7 @@ function buildGameState(game, viewerId) {
       white,
       black,
     },
-    legalMoves: buildLegalMoves(game, viewerId),
+    legalMoves: buildLegalMoves(game, viewerId, chess),
     moves: Array.isArray(game.moves) ? game.moves.map(serializeMove) : [],
   };
 }
@@ -436,7 +477,7 @@ function processTimedTurnTimeout(game) {
   if (!Number.isFinite(startedMs)) return false;
   if (Date.now() < startedMs + perMoveSeconds * 1000) return false;
 
-  const chess = new Chess(game.fenCurrent);
+  const chess = ensureGameChess(game, "processTimedTurnTimeout");
   const timedOutColor = chess.turn();
   const timedOutUserId = timedOutColor === "w" ? game.whiteUserId : game.blackUserId;
   const nextUserId = timedOutColor === "w" ? game.blackUserId : game.whiteUserId;
@@ -499,7 +540,7 @@ function scheduleBotMove(game, delayMs = 700) {
     const fresh = getGameById(game.id);
     if (!fresh || fresh.status !== "active") return;
 
-    const chess = new Chess(fresh.fenCurrent);
+    const chess = ensureGameChess(fresh, "scheduleBotMove");
     const turnUserId = chess.turn() === "w" ? fresh.whiteUserId : fresh.blackUserId;
     if (!isBotUserId(turnUserId)) return;
 
@@ -1328,7 +1369,7 @@ app.post("/api/training/bot/start", authMiddleware, (req, res) => {
     return res.status(409).json({ error: "Failed to create game" });
   }
 
-  const chess = new Chess(game.fenCurrent);
+  const chess = ensureGameChess(game, "trainingBotStart");
   const turnUserId = chess.turn() === "w" ? game.whiteUserId : game.blackUserId;
   if (isBotUserId(turnUserId)) {
     scheduleBotMove(game);
@@ -1634,7 +1675,7 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const chess = new Chess(game.fenCurrent);
+    const chess = ensureGameChess(game, "socketGameMove");
     const turnUserId = chess.turn() === "w" ? game.whiteUserId : game.blackUserId;
     if (turnUserId !== userId) {
       socket.emit("game:state", buildGameState(game, userId));
