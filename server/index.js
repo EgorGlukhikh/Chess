@@ -29,6 +29,8 @@ const {
   createGame,
   touchGame,
   applyResultToStats,
+  addPuzzlebotEvent,
+  listPuzzlebotEvents,
 } = require("./db");
 const { verifyTelegramInitData } = require("./telegramAuth");
 const { createAuthHelpers } = require("./auth");
@@ -43,6 +45,7 @@ const TELEGRAM_BOT_USERNAME = String(process.env.TELEGRAM_BOT_USERNAME || "").tr
 const TELEGRAM_MINI_APP_SHORT_NAME = String(process.env.TELEGRAM_MINI_APP_SHORT_NAME || "")
   .trim()
   .replace(/^\/+|\/+$/g, "");
+const PUZZLEBOT_WEBHOOK_SECRET = String(process.env.PUZZLEBOT_WEBHOOK_SECRET || "").trim();
 const ALLOW_DEV_AUTH = String(process.env.ALLOW_DEV_AUTH || "true").toLowerCase() === "true";
 const ADMIN_TG_IDS = new Set(
   String(process.env.ADMIN_TG_IDS || "")
@@ -704,6 +707,69 @@ function formatDuration(ms) {
   return `${seconds}s`;
 }
 
+function getPuzzlebotWebhookSecret(req) {
+  return String(
+    req.headers["x-puzzlebot-secret"]
+    || req.headers["x-webhook-secret"]
+    || req.query?.secret
+    || "",
+  ).trim();
+}
+
+function sanitizePuzzlebotPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const user = payload.user && typeof payload.user === "object"
+    ? {
+        id: payload.user.id != null ? String(payload.user.id) : null,
+        username: payload.user.username || null,
+        first_name: payload.user.first_name || null,
+        last_name: payload.user.last_name || null,
+      }
+    : null;
+
+  const invitedBy = payload.link?.invited_by && typeof payload.link.invited_by === "object"
+    ? {
+        id: payload.link.invited_by.id != null ? String(payload.link.invited_by.id) : null,
+        username: payload.link.invited_by.username || null,
+        first_name: payload.link.invited_by.first_name || null,
+        last_name: payload.link.invited_by.last_name || null,
+      }
+    : null;
+
+  return {
+    typeSubscribeEvent: payload.type_subscribe_event || null,
+    name: payload.name || null,
+    date: payload.date || null,
+    bot: payload.bot && typeof payload.bot === "object"
+      ? {
+          id: payload.bot.id != null ? String(payload.bot.id) : null,
+          username: payload.bot.username || null,
+          first_name: payload.bot.first_name || null,
+        }
+      : null,
+    chat: payload.chat && typeof payload.chat === "object"
+      ? {
+          id: payload.chat.id != null ? String(payload.chat.id) : null,
+          type: payload.chat.type || null,
+          username: payload.chat.username || null,
+          title: payload.chat.title || null,
+        }
+      : null,
+    user,
+    link: payload.link && typeof payload.link === "object"
+      ? {
+          key: payload.link.key || null,
+          type: payload.link.type || null,
+          invited_by: invitedBy,
+        }
+      : null,
+    payload,
+  };
+}
+
 function shuffleArray(list) {
   const arr = [...list];
   for (let i = arr.length - 1; i > 0; i -= 1) {
@@ -1171,6 +1237,38 @@ app.get("/api/config", (_req, res) => {
   });
 });
 
+app.post("/api/puzzlebot/webhook", (req, res) => {
+  if (!PUZZLEBOT_WEBHOOK_SECRET) {
+    return res.status(503).json({ error: "PuzzleBot webhook is not configured" });
+  }
+
+  const providedSecret = getPuzzlebotWebhookSecret(req);
+  if (!providedSecret || providedSecret !== PUZZLEBOT_WEBHOOK_SECRET) {
+    return res.status(401).json({ error: "Invalid webhook secret" });
+  }
+
+  const sanitized = sanitizePuzzlebotPayload(req.body);
+  if (!sanitized) {
+    return res.status(400).json({ error: "Invalid webhook payload" });
+  }
+
+  const event = addPuzzlebotEvent({
+    source: "puzzlebot",
+    typeSubscribeEvent: sanitized.typeSubscribeEvent,
+    accepted: sanitized.typeSubscribeEvent === "activate_link",
+    summary: sanitized.link?.type === "referal"
+      ? "activate_link:referal"
+      : String(sanitized.typeSubscribeEvent || "unknown"),
+    payload: sanitized,
+  });
+
+  return res.json({
+    ok: true,
+    accepted: sanitized.typeSubscribeEvent === "activate_link",
+    eventId: event.id,
+  });
+});
+
 app.post("/api/auth/telegram", (req, res) => {
   const initData = req.body?.initData;
   if (!initData) {
@@ -1269,6 +1367,21 @@ app.get("/api/admin/games-log", authMiddleware, (req, res) => {
   return res.json({
     timezone: APP_TIMEZONE,
     games,
+  });
+});
+
+app.get("/api/admin/puzzlebot-events", authMiddleware, (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!isAdminUser(user)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const limitRaw = Number(req.query.limit);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 50;
+
+  return res.json({
+    events: listPuzzlebotEvents(limit),
   });
 });
 

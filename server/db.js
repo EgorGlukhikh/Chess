@@ -14,6 +14,7 @@ const EMPTY_DB = {
   stats: {},
   games: [],
   tables: [],
+  puzzlebotEvents: [],
 };
 
 let db;
@@ -43,6 +44,7 @@ function initDb() {
   if (!db.stats || typeof db.stats !== "object") db.stats = {};
   if (!Array.isArray(db.games)) db.games = [];
   if (!Array.isArray(db.tables)) db.tables = [];
+  if (!Array.isArray(db.puzzlebotEvents)) db.puzzlebotEvents = [];
 
   let changed = false;
   if (!db.meta || typeof db.meta !== "object") {
@@ -450,6 +452,36 @@ function applyResultToStats(game) {
   saveDb();
 }
 
+function addPuzzlebotEvent(event) {
+  const dbRef = getDb();
+  const entry = event && typeof event === "object"
+    ? {
+        id: crypto.randomUUID(),
+        createdAt: nowIso(),
+        ...event,
+      }
+    : {
+        id: crypto.randomUUID(),
+        createdAt: nowIso(),
+        payload: null,
+      };
+
+  dbRef.puzzlebotEvents.push(entry);
+  if (dbRef.puzzlebotEvents.length > 200) {
+    dbRef.puzzlebotEvents = dbRef.puzzlebotEvents.slice(-200);
+  }
+  saveDb();
+  return entry;
+}
+
+function listPuzzlebotEvents(limit = 50) {
+  const safeLimit = Number.isFinite(Number(limit)) ? Math.min(Math.max(Number(limit), 1), 200) : 50;
+  return getDb().puzzlebotEvents
+    .slice()
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+    .slice(0, safeLimit);
+}
+
 module.exports = {
   initDb,
   getDb,
@@ -472,4 +504,6 @@ module.exports = {
   createGame,
   touchGame,
   applyResultToStats,
+  addPuzzlebotEvent,
+  listPuzzlebotEvents,
 };
