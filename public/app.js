@@ -515,6 +515,15 @@ function formatDayLabel(day) {
   return `${m[3]}.${m[2]}`;
 }
 
+function formatWinnersPeriodLabel(row) {
+  const start = formatDayLabel(row?.periodStart || row?.date || "");
+  const end = formatDayLabel(row?.periodEnd || row?.date || "");
+  if (!row?.periodStart || !row?.periodEnd || row.periodStart === row.periodEnd) {
+    return end;
+  }
+  return `${start} - ${end}`;
+}
+
 function queueModeLabel(mode) {
   return mode === "timed"
     ? "\u043d\u0430 \u0432\u0440\u0435\u043c\u044f (60\u0441/\u0445\u043e\u0434)"
@@ -987,21 +996,21 @@ function renderAdminGamesLog() {
 function renderLeaders() {
   if (state.leadersMode === "winners") {
     if (!state.winnersRows.length) {
-      refs.leadersTable.innerHTML = '<div class="muted">No completed days yet</div>';
+      refs.leadersTable.innerHTML = '<div class="muted">\u041f\u043e\u043a\u0430 \u043d\u0435\u0442 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043d\u044b\u0445 \u043f\u0435\u0440\u0438\u043e\u0434\u043e\u0432</div>';
       return;
     }
 
     refs.leadersTable.innerHTML =       `<table class="table">
         <thead>
           <tr>
-            <th>Date</th>
-            <th>Winner</th>
+            <th>\u041f\u0435\u0440\u0438\u043e\u0434</th>
+            <th>\u041f\u043e\u0431\u0435\u0434\u0438\u0442\u0435\u043b\u044c</th>
           </tr>
         </thead>
         <tbody>
           ${state.winnersRows.map((row) => {
             const winner = row?.winner?.user || null;
-            return `<tr><td>${formatDayLabel(row.date)}</td><td>${userNameHtml(winner, "No winner")}</td></tr>`;
+            return `<tr><td>${formatWinnersPeriodLabel(row)}</td><td>${userNameHtml(winner, "\u0411\u0435\u0437 \u043f\u043e\u0431\u0435\u0434\u0438\u0442\u0435\u043b\u044f")}</td></tr>`;
           }).join("")}
         </tbody>
       </table>`;
@@ -1215,7 +1224,7 @@ async function loadDailyWinners() {
   state.leadersMode = "winners";
   state.winnersRows = data.winners || [];
   state.leadersRows = [];
-  refs.leadersInfo.textContent = "Daily winners of completed days (Moscow close at 00:00)";
+  refs.leadersInfo.textContent = "\u041f\u043e\u0431\u0435\u0434\u0438\u0442\u0435\u043b\u0438 \u043f\u0435\u0440\u0438\u043e\u0434\u043e\u0432: \u043f\u0435\u0440\u0432\u044b\u0439 \u0438\u0442\u043e\u0433 20.03.2026 23:59, \u0434\u0430\u043b\u044c\u0448\u0435 \u043a\u0430\u0436\u0434\u0443\u044e \u043f\u044f\u0442\u043d\u0438\u0446\u0443";
   renderLeaders();
 }
 

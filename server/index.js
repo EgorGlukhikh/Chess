@@ -57,6 +57,9 @@ const ADMIN_USER_IDS = new Set(
     .filter(Boolean),
 );
 const TRAINING_BOT_USER_ID = "bot:trainer";
+const PERIOD_WINNERS_FIRST_START_DAY = "2026-03-14";
+const PERIOD_WINNERS_FIRST_END_DAY = "2026-03-20";
+const MOSCOW_UTC_OFFSET_SUFFIX = "T20:59:59.999Z";
 
 if (JWT_SECRET === "change-me" && process.env.NODE_ENV === "production") {
   console.warn("WARN: JWT_SECRET is default. Set JWT_SECRET in production.");
@@ -984,11 +987,7 @@ function buildGlobalLeaderboard() {
   }));
 }
 
-function buildDailyLeaderboard(dayKey) {
-  const games = listGames()
-    .filter((g) => g.status === "finished" && !!g.finishedAt && g.rated !== false)
-    .sort((a, b) => String(a.finishedAt).localeCompare(String(b.finishedAt)));
-
+function buildLeaderboardFromFinishedGames(games) {
   const map = new Map();
 
   function ensure(userId) {
@@ -1006,8 +1005,6 @@ function buildDailyLeaderboard(dayKey) {
   }
 
   for (const game of games) {
-    if (toDateKey(game.finishedAt, APP_TIMEZONE) !== dayKey) continue;
-
     const white = ensure(game.whiteUserId);
     const black = ensure(game.blackUserId);
 
@@ -1064,33 +1061,76 @@ function buildDailyLeaderboard(dayKey) {
   }));
 }
 
-function collectRatedFinishedDays(options = {}) {
-  const includeCurrentDay = options.includeCurrentDay === true;
-  const today = toDateKey(nowIso(), APP_TIMEZONE);
-  const days = new Set();
-  for (const game of listGames()) {
-    if (!game || game.status !== "finished" || !game.finishedAt || game.rated === false) continue;
-    const day = toDateKey(game.finishedAt, APP_TIMEZONE);
-    if (!includeCurrentDay && day === today) continue;
-    days.add(day);
-  }
-  return [...days].sort((a, b) => a.localeCompare(b));
+function buildDailyLeaderboard(dayKey) {
+  const games = listGames()
+    .filter((g) => (
+      g.status === "finished"
+      && !!g.finishedAt
+      && g.rated !== false
+      && toDateKey(g.finishedAt, APP_TIMEZONE) === dayKey
+    ))
+    .sort((a, b) => String(a.finishedAt).localeCompare(String(b.finishedAt)));
+
+  return buildLeaderboardFromFinishedGames(games);
 }
 
-function buildDailyWinners(limit = 30, options = {}) {
-  const daysAsc = collectRatedFinishedDays(options);
+function shiftDateKey(dayKey, deltaDays) {
+  const base = new Date(`${dayKey}T12:00:00.000Z`);
+  base.setUTCDate(base.getUTCDate() + deltaDays);
+  return base.toISOString().slice(0, 10);
+}
+
+function buildLeaderboardForDateRange(startDayKey, endDayKey) {
+  const games = listGames()
+    .filter((g) => {
+      if (!g || g.status !== "finished" || !g.finishedAt || g.rated === false) return false;
+      const dayKey = toDateKey(g.finishedAt, APP_TIMEZONE);
+      return dayKey >= startDayKey && dayKey <= endDayKey;
+    })
+    .sort((a, b) => String(a.finishedAt).localeCompare(String(b.finishedAt)));
+
+  return buildLeaderboardFromFinishedGames(games);
+}
+
+function listCompletedWinnerPeriods() {
+  const periods = [];
+  const firstCloseAtMs = Date.parse(`${PERIOD_WINNERS_FIRST_END_DAY}${MOSCOW_UTC_OFFSET_SUFFIX}`);
+  if (!Number.isFinite(firstCloseAtMs)) return periods;
+
+  const nowTs = Date.now();
+  let startDayKey = PERIOD_WINNERS_FIRST_START_DAY;
+  let endDayKey = PERIOD_WINNERS_FIRST_END_DAY;
+  let closeAtMs = firstCloseAtMs;
+
+  while (closeAtMs <= nowTs) {
+    periods.push({
+      startDayKey,
+      endDayKey,
+      closeAt: new Date(closeAtMs).toISOString(),
+    });
+    startDayKey = shiftDateKey(endDayKey, 1);
+    endDayKey = shiftDateKey(endDayKey, 7);
+    closeAtMs += 7 * 24 * 60 * 60 * 1000;
+  }
+
+  return periods;
+}
+
+function buildPeriodWinners(limit = 30) {
   const rows = [];
-  for (const day of daysAsc) {
-    const leaderboard = buildDailyLeaderboard(day);
+  for (const period of listCompletedWinnerPeriods()) {
+    const leaderboard = buildLeaderboardForDateRange(period.startDayKey, period.endDayKey);
     if (!leaderboard.length) continue;
     rows.push({
-      date: day,
+      periodStart: period.startDayKey,
+      periodEnd: period.endDayKey,
+      closeAt: period.closeAt,
       timezone: APP_TIMEZONE,
       winner: leaderboard[0],
     });
   }
 
-  rows.sort((a, b) => b.date.localeCompare(a.date));
+  rows.sort((a, b) => b.periodEnd.localeCompare(a.periodEnd));
   const max = Math.min(Math.max(Number(limit) || 30, 1), 365);
   return rows.slice(0, max);
 }
@@ -1105,7 +1145,7 @@ function resolveDailyWinner(dayOverride = null) {
     };
   }
 
-  const winners = buildDailyWinners(1);
+  const winners = buildPeriodWinners(1);
   if (winners.length) return winners[0];
 
   const today = toDateKey(nowIso(), APP_TIMEZONE);
@@ -1707,7 +1747,7 @@ app.get("/api/leaderboard/daily/winners", authMiddleware, (req, res) => {
   const limit = Number.isFinite(limitRaw) ? limitRaw : 60;
   return res.json({
     timezone: APP_TIMEZONE,
-    winners: buildDailyWinners(limit),
+    winners: buildPeriodWinners(limit),
   });
 });
 
