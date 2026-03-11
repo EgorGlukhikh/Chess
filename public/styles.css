@@ -413,6 +413,35 @@ html[data-skin="mar8"] .skin-banner::after {
   color: var(--muted);
 }
 
+.admin-log-item {
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.admin-log-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.admin-log-title {
+  font-size: 0.94rem;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.admin-log-item .meta {
+  font-size: 0.76rem;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.admin-log-copy {
+  flex-shrink: 0;
+  min-width: 42px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+}
+
 .tournament-slot {
   font-weight: 600;
 }

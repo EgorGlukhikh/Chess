@@ -996,13 +996,13 @@ function renderAdminGamesLog() {
     const black = userNameHtml(g.black, "Black");
     const started = g.startedAt ? new Date(g.startedAt).toLocaleString() : "-";
     const finished = g.finishedAt ? new Date(g.finishedAt).toLocaleString() : "-";
-    return `<div class="list-item">
-      <div>
-        <div><strong>${white}</strong> vs <strong>${black}</strong></div>
+    return `<div class="list-item admin-log-item">
+      <div class="admin-log-body">
+        <div class="admin-log-title"><strong>${white}</strong> vs <strong>${black}</strong></div>
         <div class="meta">status: ${escapeHtml(g.status)} | result: ${escapeHtml(g.result || "-")} | rated: ${g.rated ? "yes" : "no"}</div>
         <div class="meta">start: ${escapeHtml(started)} | end: ${escapeHtml(finished)} | duration: ${escapeHtml(g.durationText || "-")} | moves: ${escapeHtml(String(g.movesCount || 0))}</div>
       </div>
-      <button class="ghost" type="button" onclick="navigator.clipboard?.writeText('${escapeAttr(g.id)}')">ID</button>
+      <button class="ghost admin-log-copy" type="button" onclick="navigator.clipboard?.writeText('${escapeAttr(g.id)}')">ID</button>
     </div>`;
   }).join("");
 }
