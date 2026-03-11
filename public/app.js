@@ -15,6 +15,7 @@
   tournament: null,
   isAdmin: false,
   adminGamesLog: [],
+  adminReferrals: [],
   currentView: "lobby",
   noticeTimer: null,
   lobbyPollTimer: null,
@@ -912,6 +913,13 @@ function renderProfile() {
         </div>
         <div id="adminGamesLog" class="list" style="margin-top:8px;"></div>
       </div>
+      <div class="stat-card" style="grid-column: 1 / -1;">
+        <div class="muted">Admin: referrals</div>
+        <div class="actions-row" style="margin-top:8px;">
+          <button id="loadAdminReferralsBtn" class="ghost" type="button">Load referrals</button>
+        </div>
+        <div id="adminReferrals" class="list" style="margin-top:8px;"></div>
+      </div>
       ` : ""}
     `;
 
@@ -929,8 +937,13 @@ function renderProfile() {
 
   if (state.isAdmin) {
     const loadAdminLogBtn = document.getElementById("loadAdminLogBtn");
+    const loadAdminReferralsBtn = document.getElementById("loadAdminReferralsBtn");
     if (loadAdminLogBtn) loadAdminLogBtn.onclick = () => loadAdminGamesLog().catch((err) => showNotice(err.message));
+    if (loadAdminReferralsBtn) {
+      loadAdminReferralsBtn.onclick = () => loadAdminReferrals().catch((err) => showNotice(err.message));
+    }
     renderAdminGamesLog();
+    renderAdminReferrals();
   }
 }
 
@@ -989,6 +1002,30 @@ function renderAdminGamesLog() {
         <div class="meta">start: ${escapeHtml(started)} | end: ${escapeHtml(finished)} | duration: ${escapeHtml(g.durationText || "-")} | moves: ${escapeHtml(String(g.movesCount || 0))}</div>
       </div>
       <button class="ghost" type="button" onclick="navigator.clipboard?.writeText('${escapeAttr(g.id)}')">ID</button>
+    </div>`;
+  }).join("");
+}
+
+function renderAdminReferrals() {
+  const box = document.getElementById("adminReferrals");
+  if (!box) return;
+
+  if (!state.adminReferrals.length) {
+    box.innerHTML = '<div class="muted">No referrals loaded</div>';
+    return;
+  }
+
+  box.innerHTML = state.adminReferrals.map((r) => {
+    const invited = escapeHtml(String(r.invitedTelegramId || "-"));
+    const inviter = escapeHtml(String(r.inviterTelegramId || "-"));
+    const key = escapeHtml(String(r.linkKey || "-"));
+    const status = escapeHtml(String(r.status || "pending"));
+    const activatedAt = r.activatedAt ? new Date(r.activatedAt).toLocaleString() : "-";
+    return `<div class="list-item">
+      <div>
+        <div><strong>${invited}</strong> <- <strong>${inviter}</strong></div>
+        <div class="meta">key: ${key} | status: ${status} | activated: ${escapeHtml(activatedAt)}</div>
+      </div>
     </div>`;
   }).join("");
 }
@@ -1194,6 +1231,13 @@ async function loadAdminGamesLog() {
   const data = await api("/api/admin/games-log?limit=120");
   state.adminGamesLog = data.games || [];
   renderAdminGamesLog();
+}
+
+async function loadAdminReferrals() {
+  if (!state.isAdmin) return;
+  const data = await api("/api/admin/referrals?limit=120");
+  state.adminReferrals = data.referrals || [];
+  renderAdminReferrals();
 }
 
 async function loadGlobalLeaders() {
