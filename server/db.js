@@ -545,6 +545,39 @@ function listReferrals(limit = 50) {
     .slice(0, safeLimit);
 }
 
+function findLatestPendingReferralByInvitedTelegramId(invitedTelegramId) {
+  const targetId = String(invitedTelegramId || "").trim();
+  if (!targetId) return null;
+
+  return getDb().referrals
+    .filter((item) => (
+      item
+      && String(item.invitedTelegramId || "") === targetId
+      && String(item.status || "") === "pending"
+    ))
+    .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))[0] || null;
+}
+
+function linkPendingReferralToUser(invitedTelegramId, invitedUserId) {
+  const referral = findLatestPendingReferralByInvitedTelegramId(invitedTelegramId);
+  if (!referral) return null;
+
+  const dbRef = getDb();
+  const now = nowIso();
+  referral.invitedUserId = invitedUserId || referral.invitedUserId || null;
+
+  const inviter = dbRef.users.find((user) => String(user.tgId || "") === String(referral.inviterTelegramId || ""));
+  if (inviter) {
+    referral.inviterUserId = inviter.id;
+  }
+
+  referral.status = "linked";
+  referral.linkedAt = now;
+  referral.updatedAt = now;
+  saveDb();
+  return referral;
+}
+
 module.exports = {
   initDb,
   getDb,
@@ -571,4 +604,6 @@ module.exports = {
   listPuzzlebotEvents,
   upsertPendingReferral,
   listReferrals,
+  findLatestPendingReferralByInvitedTelegramId,
+  linkPendingReferralToUser,
 };

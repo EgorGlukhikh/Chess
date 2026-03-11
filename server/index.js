@@ -33,6 +33,7 @@ const {
   listPuzzlebotEvents,
   upsertPendingReferral,
   listReferrals,
+  linkPendingReferralToUser,
 } = require("./db");
 const { verifyTelegramInitData } = require("./telegramAuth");
 const { createAuthHelpers } = require("./auth");
@@ -164,6 +165,18 @@ function publicUserById(userId) {
     };
   }
   return publicUser(getUserById(userId));
+}
+
+function formatPuzzlebotPersonLabel(person, telegramId) {
+  if (person && typeof person === "object") {
+    const username = String(person.username || "").trim().replace(/^@+/, "");
+    const fullName = [person.first_name, person.last_name].filter(Boolean).join(" ").trim();
+    if (fullName && username) return `${fullName} (@${username})`;
+    if (fullName) return fullName;
+    if (username) return `@${username}`;
+  }
+  const rawId = String(telegramId || "").trim();
+  return rawId || "-";
 }
 
 function isOnline(userId) {
@@ -1309,6 +1322,7 @@ app.post("/api/auth/telegram", (req, res) => {
   }
 
   const user = upsertTelegramUser(verified.user);
+  linkPendingReferralToUser(user.tgId, user.id);
   const stats = getStatsByUserId(user.id);
   const token = signToken(user.id);
 
@@ -1424,7 +1438,23 @@ app.get("/api/admin/referrals", authMiddleware, (req, res) => {
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 50;
 
   return res.json({
-    referrals: listReferrals(limit),
+    referrals: listReferrals(limit).map((referral) => {
+      const invitedUser = referral.invitedUserId ? publicUserById(referral.invitedUserId) : null;
+      const inviterUser = referral.inviterUserId ? publicUserById(referral.inviterUserId) : null;
+      const payload = referral.payload && typeof referral.payload === "object" ? referral.payload : null;
+      const invitedPayload = payload?.user && typeof payload.user === "object" ? payload.user : null;
+      const inviterPayload = payload?.link?.invited_by && typeof payload.link.invited_by === "object"
+        ? payload.link.invited_by
+        : null;
+
+      return {
+        ...referral,
+        invitedUser,
+        inviterUser,
+        invitedLabel: invitedUser?.displayName || formatPuzzlebotPersonLabel(invitedPayload, referral.invitedTelegramId),
+        inviterLabel: inviterUser?.displayName || formatPuzzlebotPersonLabel(inviterPayload, referral.inviterTelegramId),
+      };
+    }),
   });
 });
 

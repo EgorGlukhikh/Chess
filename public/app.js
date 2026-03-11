@@ -1016,8 +1016,8 @@ function renderAdminReferrals() {
   }
 
   box.innerHTML = state.adminReferrals.map((r) => {
-    const invited = escapeHtml(String(r.invitedTelegramId || "-"));
-    const inviter = escapeHtml(String(r.inviterTelegramId || "-"));
+    const invited = escapeHtml(String(r.invitedLabel || r.invitedTelegramId || "-"));
+    const inviter = escapeHtml(String(r.inviterLabel || r.inviterTelegramId || "-"));
     const key = escapeHtml(String(r.linkKey || "-"));
     const status = escapeHtml(String(r.status || "pending"));
     const activatedAt = r.activatedAt ? new Date(r.activatedAt).toLocaleString() : "-";
