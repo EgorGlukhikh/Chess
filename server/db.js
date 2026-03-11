@@ -15,6 +15,7 @@ const EMPTY_DB = {
   games: [],
   tables: [],
   puzzlebotEvents: [],
+  referrals: [],
 };
 
 let db;
@@ -45,6 +46,7 @@ function initDb() {
   if (!Array.isArray(db.games)) db.games = [];
   if (!Array.isArray(db.tables)) db.tables = [];
   if (!Array.isArray(db.puzzlebotEvents)) db.puzzlebotEvents = [];
+  if (!Array.isArray(db.referrals)) db.referrals = [];
 
   let changed = false;
   if (!db.meta || typeof db.meta !== "object") {
@@ -482,6 +484,67 @@ function listPuzzlebotEvents(limit = 50) {
     .slice(0, safeLimit);
 }
 
+function upsertPendingReferral(entry) {
+  const dbRef = getDb();
+  const invitedTelegramId = String(entry?.invitedTelegramId || "").trim();
+  const inviterTelegramId = String(entry?.inviterTelegramId || "").trim();
+  const linkKey = String(entry?.linkKey || "").trim();
+  if (!invitedTelegramId || !inviterTelegramId || !linkKey) {
+    return null;
+  }
+
+  const now = nowIso();
+  const existing = dbRef.referrals.find((item) => (
+    item
+    && String(item.source || "") === String(entry.source || "puzzlebot")
+    && String(item.invitedTelegramId || "") === invitedTelegramId
+    && String(item.linkKey || "") === linkKey
+  ));
+
+  if (existing) {
+    existing.inviterTelegramId = inviterTelegramId;
+    existing.activatedAt = entry.activatedAt || existing.activatedAt || now;
+    existing.status = existing.status || "pending";
+    existing.updatedAt = now;
+    if (entry.payload !== undefined) {
+      existing.payload = entry.payload;
+    }
+    saveDb();
+    return existing;
+  }
+
+  const referral = {
+    id: crypto.randomUUID(),
+    source: String(entry.source || "puzzlebot"),
+    linkKey,
+    inviterTelegramId,
+    invitedTelegramId,
+    activatedAt: entry.activatedAt || now,
+    linkedAt: null,
+    qualifiedAt: null,
+    bonusGrantedAt: null,
+    inviterUserId: null,
+    invitedUserId: null,
+    qualifiedGameId: null,
+    status: "pending",
+    payload: entry.payload !== undefined ? entry.payload : null,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  dbRef.referrals.push(referral);
+  saveDb();
+  return referral;
+}
+
+function listReferrals(limit = 50) {
+  const safeLimit = Number.isFinite(Number(limit)) ? Math.min(Math.max(Number(limit), 1), 200) : 50;
+  return getDb().referrals
+    .slice()
+    .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))
+    .slice(0, safeLimit);
+}
+
 module.exports = {
   initDb,
   getDb,
@@ -506,4 +569,6 @@ module.exports = {
   applyResultToStats,
   addPuzzlebotEvent,
   listPuzzlebotEvents,
+  upsertPendingReferral,
+  listReferrals,
 };

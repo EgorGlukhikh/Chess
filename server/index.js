@@ -31,6 +31,8 @@ const {
   applyResultToStats,
   addPuzzlebotEvent,
   listPuzzlebotEvents,
+  upsertPendingReferral,
+  listReferrals,
 } = require("./db");
 const { verifyTelegramInitData } = require("./telegramAuth");
 const { createAuthHelpers } = require("./auth");
@@ -1269,10 +1271,29 @@ app.post("/api/puzzlebot/webhook", (req, res) => {
     payload: sanitized,
   });
 
+  let referral = null;
+  if (
+    sanitized.typeSubscribeEvent === "activate_link"
+    && sanitized.link?.type === "referal"
+    && sanitized.user?.id
+    && sanitized.link?.invited_by?.id
+    && sanitized.link?.key
+  ) {
+    referral = upsertPendingReferral({
+      source: "puzzlebot",
+      invitedTelegramId: sanitized.user.id,
+      inviterTelegramId: sanitized.link.invited_by.id,
+      linkKey: sanitized.link.key,
+      activatedAt: sanitized.date ? new Date(Number(sanitized.date) * 1000).toISOString() : nowIso(),
+      payload: sanitized,
+    });
+  }
+
   return res.json({
     ok: true,
     accepted: sanitized.typeSubscribeEvent === "activate_link",
     eventId: event.id,
+    referralStored: !!referral,
   });
 });
 
@@ -1389,6 +1410,21 @@ app.get("/api/admin/puzzlebot-events", authMiddleware, (req, res) => {
 
   return res.json({
     events: listPuzzlebotEvents(limit),
+  });
+});
+
+app.get("/api/admin/referrals", authMiddleware, (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!isAdminUser(user)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const limitRaw = Number(req.query.limit);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 50;
+
+  return res.json({
+    referrals: listReferrals(limit),
   });
 });
 
