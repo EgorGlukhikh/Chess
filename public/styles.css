@@ -1,6 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap");
 
-/* ——— Светлая тема (по умолчанию) ——— */
+/* Light theme */
 :root,
 [data-theme="light"] {
   --bg-top: #f0f4ef;
@@ -20,7 +20,7 @@
   --row-me: #e7f9ef;
 }
 
-/* ——— Тёмная тема ——— */
+/* Dark theme */
 [data-theme="dark"] {
   --bg-top: #1e2433;
   --bg-bottom: #151a26;
@@ -37,22 +37,6 @@
   --tab-bg: #2a3140;
   --list-item-bg: #2a3140;
   --row-me: rgba(61, 155, 122, 0.2);
-}
-
-[data-skin="feb23"] {
-  --accent: #4a6b3b;
-  --accent-2: #a03a2f;
-  --board-light: #c9b48a;
-  --board-dark: #59694b;
-  --row-me: rgba(160, 58, 47, 0.18);
-}
-
-[data-skin="mar8"] {
-  --accent: #b44f86;
-  --accent-2: #3f8c63;
-  --board-light: #f4d6e5;
-  --board-dark: #7ea987;
-  --row-me: rgba(180, 79, 134, 0.15);
 }
 
 * {
@@ -77,24 +61,6 @@ html:not([data-theme]) body {
 
 html[data-theme="dark"] body {
   background: linear-gradient(180deg, #1e2433 0%, #151a26 100%);
-}
-
-html[data-skin="feb23"] body {
-  background:
-    radial-gradient(140px 80px at 12% 18%, rgba(40, 68, 42, 0.44), transparent 62%),
-    radial-gradient(170px 90px at 78% 24%, rgba(70, 92, 50, 0.5), transparent 64%),
-    radial-gradient(180px 90px at 30% 72%, rgba(87, 74, 50, 0.42), transparent 66%),
-    radial-gradient(140px 80px at 86% 84%, rgba(45, 56, 38, 0.44), transparent 62%),
-    linear-gradient(165deg, #d4c49a 0%, #9eae84 42%, #7b8b68 100%);
-}
-
-html[data-skin="mar8"] body {
-  background:
-    radial-gradient(180px 95px at 16% 20%, rgba(255, 186, 219, 0.36), transparent 68%),
-    radial-gradient(180px 95px at 84% 24%, rgba(177, 239, 196, 0.34), transparent 70%),
-    radial-gradient(190px 98px at 30% 78%, rgba(245, 164, 210, 0.28), transparent 70%),
-    radial-gradient(160px 88px at 82% 82%, rgba(132, 206, 166, 0.32), transparent 66%),
-    linear-gradient(165deg, #f7edf2 0%, #d7f0df 48%, #c6e9ce 100%);
 }
 
 .screen {
@@ -244,58 +210,6 @@ button.danger {
   min-height: 1.2em;
 }
 
-html[data-skin="feb23"] .skin-banner {
-  border-color: #66754f;
-  background:
-    linear-gradient(120deg, rgba(57, 78, 49, 0.92), rgba(90, 106, 63, 0.9)),
-    radial-gradient(160px 70px at 10% 20%, rgba(121, 66, 42, 0.25), transparent 70%);
-}
-
-html[data-skin="feb23"] .skin-banner-title {
-  color: #f6f1de;
-  letter-spacing: 0.4px;
-}
-
-html[data-skin="feb23"] .skin-banner-text {
-  color: #f4e9ce;
-}
-
-html[data-skin="feb23"] .skin-banner::after {
-  content: "★   ★   ★";
-  position: absolute;
-  right: 12px;
-  top: 10px;
-  color: #d3493f;
-  font-size: 14px;
-  letter-spacing: 2px;
-  opacity: 0.92;
-}
-
-html[data-skin="mar8"] .skin-banner {
-  border-color: #d3b2c4;
-  background:
-    linear-gradient(125deg, rgba(247, 216, 233, 0.95), rgba(212, 240, 223, 0.94)),
-    radial-gradient(160px 80px at 14% 18%, rgba(205, 115, 167, 0.2), transparent 70%);
-}
-
-html[data-skin="mar8"] .skin-banner-title {
-  color: #6a2f53;
-}
-
-html[data-skin="mar8"] .skin-banner-text {
-  color: #3f6f54;
-}
-
-html[data-skin="mar8"] .skin-banner::after {
-  content: "✿   ✿   ✿";
-  position: absolute;
-  right: 12px;
-  top: 10px;
-  color: #b44f86;
-  font-size: 14px;
-  letter-spacing: 2px;
-  opacity: 0.9;
-}
 
 .header-left {
   display: flex;
@@ -459,7 +373,7 @@ html[data-skin="mar8"] .skin-banner::after {
   gap: 10px;
 }
 
-/* ——— Игроки над доской (аватары) ——— */
+/* Players above board */
 .game-players-strip {
   display: flex;
   align-items: center;
@@ -580,7 +494,7 @@ html[data-skin="mar8"] .skin-banner::after {
   text-decoration-thickness: 2px;
 }
 
-/* Обёртка резервирует квадрат — доску не сжимает flex/верстка */
+/* Board wrapper */
 .board-wrap {
   --axis-size: 16px;
   --board-size: 280px;
