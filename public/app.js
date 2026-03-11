@@ -161,7 +161,6 @@ const refs = {
   themeToggle: document.getElementById("themeToggle"),
   waitingList: document.getElementById("waitingList"),
   incomingChallenges: document.getElementById("incomingChallenges"),
-  lobbyLeaders: document.getElementById("lobbyLeaders"),
   board: document.getElementById("board"),
   boardAxisRanks: document.getElementById("boardAxisRanks"),
   boardAxisFiles: document.getElementById("boardAxisFiles"),
@@ -229,7 +228,6 @@ function setView(view) {
     el.classList.toggle("hidden", el.id !== `view-${view}`);
   });
 
-  if (view === "lobby") renderLobbyLeaders();
   if (view === "tournament") {
     renderTournament();
     if (state.token) loadTournament().catch(() => {});
@@ -693,28 +691,6 @@ function renderIncomingChallenges() {
     item.appendChild(controls);
     refs.incomingChallenges.appendChild(item);
   }
-  renderLobbyLeaders();
-}
-
-function renderLobbyLeaders() {
-  if (!refs.lobbyLeaders) return;
-  const rows = (state.leadersRows || []).slice(0, 10);
-  if (!rows.length) {
-    refs.lobbyLeaders.innerHTML = '<div class="muted">Loading leaderboard...</div>';
-    return;
-  }
-
-  refs.lobbyLeaders.innerHTML =     `<table class="table table-compact">
-      <thead>
-        <tr><th>#</th><th>Player</th><th>Points</th></tr>
-      </thead>
-      <tbody>
-        ${rows.map((r) => {
-          const me = r.user?.id === state.me?.id;
-          return `<tr class="${me ? "me" : ""}"><td>${r.rank}</td><td>${userNameHtml(r.user, "Unknown")}</td><td>${r.points}</td></tr>`;
-        }).join("")}
-      </tbody>
-    </table>`;
 }
 
 function renderGame() {
@@ -1269,7 +1245,6 @@ async function loadGlobalLeaders() {
   state.currentPeriodInfo = null;
   refs.leadersInfo.textContent = "Общий рейтинг: игровые очки + реферальные бонусы";
   renderLeaders();
-  renderLobbyLeaders();
 }
 
 async function loadDailyLeaders() {

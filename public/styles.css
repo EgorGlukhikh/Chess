@@ -456,33 +456,6 @@ button.danger {
   font-size: 0.95rem;
 }
 
-.lobby-rating-title {
-  margin-top: 16px;
-}
-
-.lobby-leaders {
-  overflow-x: auto;
-  margin-top: 6px;
-}
-
-.table-compact {
-  font-size: 0.8rem;
-  width: 100%;
-  min-width: 180px;
-  border-collapse: collapse;
-}
-
-.table-compact th,
-.table-compact td {
-  padding: 6px 8px;
-  text-align: left;
-  border-bottom: 1px solid var(--border);
-}
-
-.table-compact tr.me {
-  background: var(--row-me);
-}
-
 .user-link {
   color: var(--accent);
   text-decoration: underline;
