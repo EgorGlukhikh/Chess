@@ -1073,29 +1073,20 @@ function renderLeaders() {
       return;
     }
 
-    refs.leadersTable.innerHTML = `${currentTable}<table class="table">
-      <thead>
-        <tr>
-          <th>Период</th>
-          <th>Победитель</th>
-          <th>Игры</th>
-          <th>Реф.</th>
-          <th>Итого</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${state.winnersRows.map((row) => {
-          const winner = row?.winner?.user || null;
-          return `<tr>
-            <td>${formatWinnersPeriodLabel(row)}</td>
-            <td>${userNameHtml(winner, "Без победителя")}</td>
-            <td>${row?.winner?.gamePoints ?? 0}</td>
-            <td>${row?.winner?.referralPoints ?? 0}</td>
-            <td>${row?.winner?.points ?? 0}</td>
-          </tr>`;
-        }).join("")}
-      </tbody>
-    </table>`;
+    refs.leadersTable.innerHTML = `${currentTable}
+      <div style="margin-top:8px;">
+        <div class="muted" style="margin-bottom:8px;">Зафиксированные победители периодов</div>
+        <ol class="winners-period-list">
+          ${state.winnersRows.map((row) => {
+            const winner = row?.winner?.user || null;
+            return `<li>
+              <span class="winners-period-label">${formatWinnersPeriodLabel(row)}</span>
+              <span class="winners-period-sep"> - </span>
+              <span class="winners-period-name">${userNameHtml(winner, "Без победителя")}</span>
+            </li>`;
+          }).join("")}
+        </ol>
+      </div>`;
     return;
   }
 

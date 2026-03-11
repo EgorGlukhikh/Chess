@@ -795,6 +795,26 @@ button.danger {
   background: var(--row-me);
 }
 
+.winners-period-list {
+  margin: 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 8px;
+}
+
+.winners-period-list li {
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.winners-period-label {
+  color: var(--muted);
+}
+
+.winners-period-name {
+  font-weight: 600;
+}
+
 .notice {
   position: fixed;
   left: 50%;
