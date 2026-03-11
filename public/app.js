@@ -12,6 +12,7 @@
   leadersMode: "global",
   leadersRows: [],
   winnersRows: [],
+  currentPeriodInfo: null,
   tournament: null,
   isAdmin: false,
   adminGamesLog: [],
@@ -907,18 +908,18 @@ function renderProfile() {
       </div>
       ${state.isAdmin ? `
       <div class="stat-card" style="grid-column: 1 / -1;">
-        <div class="muted">Admin: game log</div>
-        <div class="actions-row" style="margin-top:8px;">
-          <button id="loadAdminLogBtn" class="ghost" type="button">Load log</button>
-        </div>
-        <div id="adminGamesLog" class="list" style="margin-top:8px;"></div>
-      </div>
-      <div class="stat-card" style="grid-column: 1 / -1;">
         <div class="muted">Admin: referrals</div>
         <div class="actions-row" style="margin-top:8px;">
           <button id="loadAdminReferralsBtn" class="ghost" type="button">Load referrals</button>
         </div>
         <div id="adminReferrals" class="list" style="margin-top:8px;"></div>
+      </div>
+      <div class="stat-card" style="grid-column: 1 / -1;">
+        <div class="muted">Admin: game log</div>
+        <div class="actions-row" style="margin-top:8px;">
+          <button id="loadAdminLogBtn" class="ghost" type="button">Load log</button>
+        </div>
+        <div id="adminGamesLog" class="list" style="margin-top:8px;"></div>
       </div>
       ` : ""}
     `;
@@ -1023,7 +1024,7 @@ function renderAdminReferrals() {
     const activatedAt = r.activatedAt ? new Date(r.activatedAt).toLocaleString() : "-";
     return `<div class="list-item">
       <div>
-        <div><strong>${invited}</strong> <- <strong>${inviter}</strong></div>
+        <div><strong>${inviter}</strong> -> <strong>${invited}</strong></div>
         <div class="meta">key: ${key} | status: ${status} | activated: ${escapeHtml(activatedAt)}</div>
       </div>
     </div>`;
@@ -1031,40 +1032,114 @@ function renderAdminReferrals() {
 }
 
 function renderLeaders() {
-  if (state.leadersMode === "winners") {
-    if (!state.winnersRows.length) {
-      refs.leadersTable.innerHTML = '<div class="muted">\u041f\u043e\u043a\u0430 \u043d\u0435\u0442 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043d\u044b\u0445 \u043f\u0435\u0440\u0438\u043e\u0434\u043e\u0432</div>';
+  if (state.leadersMode === "referral") {
+    if (!state.leadersRows.length) {
+      refs.leadersTable.innerHTML = '<div class="muted">Пока нет реферальных начислений</div>';
       return;
     }
 
-    refs.leadersTable.innerHTML =       `<table class="table">
-        <thead>
-          <tr>
-            <th>\u041f\u0435\u0440\u0438\u043e\u0434</th>
-            <th>\u041f\u043e\u0431\u0435\u0434\u0438\u0442\u0435\u043b\u044c</th>
+    refs.leadersTable.innerHTML = `<table class="table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Игрок</th>
+          <th>Реферальные</th>
+          <th>Квалиф.</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${state.leadersRows.map((row) => `
+          <tr class="${row.user.id === state.me?.id ? "me" : ""}">
+            <td>${row.rank}</td>
+            <td>${userNameHtml(row.user, "Unknown")}</td>
+            <td>${row.referralPoints}</td>
+            <td>${row.referralCount || 0}</td>
           </tr>
-        </thead>
-        <tbody>
-          ${state.winnersRows.map((row) => {
-            const winner = row?.winner?.user || null;
-            return `<tr><td>${formatWinnersPeriodLabel(row)}</td><td>${userNameHtml(winner, "\u0411\u0435\u0437 \u043f\u043e\u0431\u0435\u0434\u0438\u0442\u0435\u043b\u044f")}</td></tr>`;
-          }).join("")}
-        </tbody>
-      </table>`;
+        `).join("")}
+      </tbody>
+    </table>`;
+    return;
+  }
+
+  if (state.leadersMode === "winners") {
+    const currentTable = state.leadersRows.length
+      ? `<div style="margin-bottom:12px;">
+          <div class="muted" style="margin-bottom:8px;">Текущий период</div>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Игрок</th>
+                <th>Игры</th>
+                <th>Реф.</th>
+                <th>Итого</th>
+                <th>W</th>
+                <th>L</th>
+                <th>D</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${state.leadersRows.map((row) => `
+                <tr class="${row.user.id === state.me?.id ? "me" : ""}">
+                  <td>${row.rank}</td>
+                  <td>${userNameHtml(row.user, "Unknown")}</td>
+                  <td>${row.gamePoints}</td>
+                  <td>${row.referralPoints}</td>
+                  <td>${row.points}</td>
+                  <td>${row.wins}</td>
+                  <td>${row.losses}</td>
+                  <td>${row.draws}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>`
+      : '<div class="muted" style="margin-bottom:12px;">В текущем периоде пока нет очков</div>';
+
+    if (!state.winnersRows.length) {
+      refs.leadersTable.innerHTML = `${currentTable}<div class="muted">Пока нет завершенных периодов</div>`;
+      return;
+    }
+
+    refs.leadersTable.innerHTML = `${currentTable}<table class="table">
+      <thead>
+        <tr>
+          <th>Период</th>
+          <th>Победитель</th>
+          <th>Игры</th>
+          <th>Реф.</th>
+          <th>Итого</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${state.winnersRows.map((row) => {
+          const winner = row?.winner?.user || null;
+          return `<tr>
+            <td>${formatWinnersPeriodLabel(row)}</td>
+            <td>${userNameHtml(winner, "Без победителя")}</td>
+            <td>${row?.winner?.gamePoints ?? 0}</td>
+            <td>${row?.winner?.referralPoints ?? 0}</td>
+            <td>${row?.winner?.points ?? 0}</td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>`;
     return;
   }
 
   if (!state.leadersRows.length) {
-    refs.leadersTable.innerHTML = '<div class="muted">No data yet</div>';
+    refs.leadersTable.innerHTML = '<div class="muted">Пока нет данных</div>';
     return;
   }
 
-  refs.leadersTable.innerHTML =     `<table class="table">
+  refs.leadersTable.innerHTML = `<table class="table">
       <thead>
         <tr>
           <th>#</th>
-          <th>Player</th>
-          <th>Points</th>
+          <th>Игрок</th>
+          <th>Игры</th>
+          <th>Реф.</th>
+          <th>Итого</th>
           <th>W</th>
           <th>L</th>
           <th>D</th>
@@ -1078,6 +1153,8 @@ function renderLeaders() {
               <tr class="${meClass}">
                 <td>${row.rank}</td>
                 <td>${userNameHtml(row.user, "Unknown")}</td>
+                <td>${row.gamePoints}</td>
+                <td>${row.referralPoints}</td>
                 <td>${row.points}</td>
                 <td>${row.wins}</td>
                 <td>${row.losses}</td>
@@ -1245,30 +1322,32 @@ async function loadGlobalLeaders() {
   state.leadersMode = "global";
   state.leadersRows = data.leaderboard || [];
   state.winnersRows = [];
-  refs.leadersInfo.textContent = "Global leaderboard";
+  state.currentPeriodInfo = null;
+  refs.leadersInfo.textContent = "Общий рейтинг: игровые очки + реферальные бонусы";
   renderLeaders();
   renderLobbyLeaders();
 }
 
 async function loadDailyLeaders() {
-  const data = await api("/api/leaderboard/daily");
-  const winnerData = data?.date
-    ? await api(`/api/leaderboard/daily/winner?date=${encodeURIComponent(data.date)}`)
-    : await api("/api/leaderboard/daily/winner");
-  state.leadersMode = "daily";
+  const data = await api("/api/leaderboard/referral");
+  state.leadersMode = "referral";
   state.leadersRows = data.leaderboard || [];
   state.winnersRows = [];
-  const winnerHtml = userNameHtml(winnerData?.winner?.user || null, "none");
-  refs.leadersInfo.innerHTML = `Daily leaderboard: ${escapeHtml(data.date)} (${escapeHtml(data.timezone)}) | winner: ${winnerHtml}`;
+  state.currentPeriodInfo = null;
+  refs.leadersInfo.textContent = "Реферальный рейтинг: только начисленные бонусы";
   renderLeaders();
 }
 
 async function loadDailyWinners() {
-  const data = await api("/api/leaderboard/daily/winners");
+  const [data, current] = await Promise.all([
+    api("/api/leaderboard/daily/winners"),
+    api("/api/leaderboard/period/current"),
+  ]);
   state.leadersMode = "winners";
   state.winnersRows = data.winners || [];
-  state.leadersRows = [];
-  refs.leadersInfo.textContent = "\u041f\u043e\u0431\u0435\u0434\u0438\u0442\u0435\u043b\u0438 \u043f\u0435\u0440\u0438\u043e\u0434\u043e\u0432: \u043f\u0435\u0440\u0432\u044b\u0439 \u0438\u0442\u043e\u0433 20.03.2026 23:59, \u0434\u0430\u043b\u044c\u0448\u0435 \u043a\u0430\u0436\u0434\u0443\u044e \u043f\u044f\u0442\u043d\u0438\u0446\u0443";
+  state.leadersRows = current.leaderboard || [];
+  state.currentPeriodInfo = current || null;
+  refs.leadersInfo.textContent = `Победители периодов: текущий период ${formatDayLabel(current.periodStart)} - ${formatDayLabel(current.periodEnd)}`;
   renderLeaders();
 }
 
@@ -1381,7 +1460,7 @@ function startLobbyPolling() {
       loadGlobalLeaders().catch(() => {});
     }
     if (state.currentView === "leaders") {
-      if (state.leadersMode === "daily") {
+      if (state.leadersMode === "referral") {
         loadDailyLeaders().catch(() => {});
       } else if (state.leadersMode === "winners") {
         loadDailyWinners().catch(() => {});

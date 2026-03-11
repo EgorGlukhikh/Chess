@@ -34,6 +34,8 @@ const {
   upsertPendingReferral,
   listReferrals,
   linkPendingReferralToUser,
+  syncReferralUserLinksByTelegramId,
+  qualifyReferralForGame,
 } = require("./db");
 const { verifyTelegramInitData } = require("./telegramAuth");
 const { createAuthHelpers } = require("./auth");
@@ -63,9 +65,11 @@ const ADMIN_USER_IDS = new Set(
     .filter(Boolean),
 );
 const TRAINING_BOT_USER_ID = "bot:trainer";
-const PERIOD_WINNERS_FIRST_START_DAY = "2026-03-14";
+const PERIOD_WINNERS_FIRST_START_DAY = "2026-03-11";
 const PERIOD_WINNERS_FIRST_END_DAY = "2026-03-20";
 const MOSCOW_UTC_OFFSET_SUFFIX = "T20:59:59.999Z";
+const REFERRAL_BONUS_POINTS = 3;
+const REFERRAL_QUALIFY_MIN_MOVES = 5;
 
 if (JWT_SECRET === "change-me" && process.env.NODE_ENV === "production") {
   console.warn("WARN: JWT_SECRET is default. Set JWT_SECRET in production.");
@@ -165,6 +169,125 @@ function publicUserById(userId) {
     };
   }
   return publicUser(getUserById(userId));
+}
+
+function getReferralBonusEntries(startDayKey = null, endDayKey = null) {
+  return listReferrals(5000).filter((referral) => {
+    if (!referral || !referral.inviterUserId || !referral.bonusGrantedAt) return false;
+    if (!startDayKey && !endDayKey) return true;
+    const dayKey = toDateKey(referral.bonusGrantedAt, APP_TIMEZONE);
+    if (startDayKey && dayKey < startDayKey) return false;
+    if (endDayKey && dayKey > endDayKey) return false;
+    return true;
+  });
+}
+
+function buildReferralLeaderboardRows(startDayKey = null, endDayKey = null) {
+  const map = new Map();
+
+  function ensure(userId) {
+    if (!map.has(userId)) {
+      map.set(userId, {
+        userId,
+        referralPoints: 0,
+        referralCount: 0,
+        lastReferralPointAt: null,
+      });
+    }
+    return map.get(userId);
+  }
+
+  for (const referral of getReferralBonusEntries(startDayKey, endDayKey)) {
+    const item = ensure(referral.inviterUserId);
+    item.referralPoints += REFERRAL_BONUS_POINTS;
+    item.referralCount += 1;
+    item.lastReferralPointAt = referral.bonusGrantedAt;
+  }
+
+  return [...map.values()]
+    .map((item) => {
+      const user = getUserById(item.userId);
+      if (!user) return null;
+      return {
+        user: publicUser(user),
+        referralPoints: item.referralPoints,
+        referralCount: item.referralCount,
+        lastReferralPointAt: item.lastReferralPointAt,
+      };
+    })
+    .filter(Boolean);
+}
+
+function rankCompositeLeaderboardRows(rows) {
+  rows.sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points;
+    if (b.gamePoints !== a.gamePoints) return b.gamePoints - a.gamePoints;
+    if (b.referralPoints !== a.referralPoints) return b.referralPoints - a.referralPoints;
+    if (b.wins !== a.wins) return b.wins - a.wins;
+    if (a.losses !== b.losses) return a.losses - b.losses;
+
+    const aTime = a.lastPointGainAt || "9999-12-31T23:59:59.999Z";
+    const bTime = b.lastPointGainAt || "9999-12-31T23:59:59.999Z";
+    if (aTime !== bTime) return aTime.localeCompare(bTime);
+    return a.user.displayName.localeCompare(b.user.displayName, "ru");
+  });
+
+  return rows.map((row, idx) => ({
+    rank: idx + 1,
+    ...row,
+  }));
+}
+
+function combineLeaderboardRows(gameRows, referralRows) {
+  const map = new Map();
+
+  function ensure(user) {
+    if (!user?.id) return null;
+    if (!map.has(user.id)) {
+      map.set(user.id, {
+        user,
+        gamePoints: 0,
+        referralPoints: 0,
+        points: 0,
+        referralCount: 0,
+        wins: 0,
+        losses: 0,
+        draws: 0,
+        gamesTotal: 0,
+        lastPointGainAt: null,
+      });
+    }
+    return map.get(user.id);
+  }
+
+  for (const row of gameRows) {
+    const target = ensure(row.user);
+    if (!target) continue;
+    target.gamePoints = row.gamePoints;
+    target.wins = row.wins;
+    target.losses = row.losses;
+    target.draws = row.draws;
+    target.gamesTotal = row.gamesTotal;
+    target.lastPointGainAt = row.lastGamePointGainAt || target.lastPointGainAt;
+  }
+
+  for (const row of referralRows) {
+    const target = ensure(row.user);
+    if (!target) continue;
+    target.referralPoints = row.referralPoints;
+    target.referralCount = row.referralCount;
+    const referralTime = row.lastReferralPointAt || null;
+    if (!target.lastPointGainAt || (referralTime && referralTime > target.lastPointGainAt)) {
+      target.lastPointGainAt = referralTime;
+    }
+  }
+
+  const rows = [...map.values()].map((row) => ({
+    ...row,
+    points: Number(row.gamePoints || 0) + Number(row.referralPoints || 0),
+  }));
+
+  return rankCompositeLeaderboardRows(rows);
 }
 
 function formatPuzzlebotPersonLabel(person, telegramId) {
@@ -648,6 +771,7 @@ function finishGame(game, { result, finishReason }) {
   activeGameByUser.delete(game.blackUserId);
 
   applyResultToStats(game);
+  qualifyReferralForGame(game, { minMoves: REFERRAL_QUALIFY_MIN_MOVES });
   touchGame(game);
   maybeAdvanceTournamentByGame(game);
 
@@ -1049,7 +1173,7 @@ function maybeAdvanceTournamentByGame(game) {
 
 function buildGlobalLeaderboard() {
   const dbRef = getDb();
-  const rows = Object.values(dbRef.stats).map((stats) => {
+  const gameRows = Object.values(dbRef.stats).map((stats) => {
     const user = getUserById(stats.userId);
     return {
       user: publicUser(user),
@@ -1057,25 +1181,16 @@ function buildGlobalLeaderboard() {
       losses: stats.losses,
       draws: stats.draws,
       gamesTotal: stats.gamesTotal,
-      points: stats.pointsTotal,
-      updatedAt: stats.updatedAt,
+      gamePoints: stats.pointsTotal,
+      lastGamePointGainAt: stats.updatedAt,
     };
   }).filter((row) => row.user);
 
-  rows.sort((a, b) => {
-    if (b.points !== a.points) return b.points - a.points;
-    if (b.wins !== a.wins) return b.wins - a.wins;
-    if (a.losses !== b.losses) return a.losses - b.losses;
-    return a.user.displayName.localeCompare(b.user.displayName, "ru");
-  });
-
-  return rows.map((row, idx) => ({
-    rank: idx + 1,
-    ...row,
-  }));
+  const referralRows = buildReferralLeaderboardRows();
+  return combineLeaderboardRows(gameRows, referralRows);
 }
 
-function buildLeaderboardFromFinishedGames(games) {
+function buildGameLeaderboardRowsFromFinishedGames(games) {
   const map = new Map();
 
   function ensure(userId) {
@@ -1122,31 +1237,16 @@ function buildLeaderboardFromFinishedGames(games) {
       if (!user) return null;
       return {
         user: publicUser(user),
-        points: item.points,
+        gamePoints: item.points,
         wins: item.wins,
         losses: item.losses,
         draws: item.draws,
-        lastPointGainAt: item.lastPointGainAt,
+        gamesTotal: item.wins + item.losses + item.draws,
+        lastGamePointGainAt: item.lastPointGainAt,
       };
     })
     .filter(Boolean);
-
-  rows.sort((a, b) => {
-    if (b.points !== a.points) return b.points - a.points;
-    if (b.wins !== a.wins) return b.wins - a.wins;
-    if (a.losses !== b.losses) return a.losses - b.losses;
-
-    const aTime = a.lastPointGainAt || "9999-12-31T23:59:59.999Z";
-    const bTime = b.lastPointGainAt || "9999-12-31T23:59:59.999Z";
-    if (aTime !== bTime) return aTime.localeCompare(bTime);
-
-    return a.user.displayName.localeCompare(b.user.displayName, "ru");
-  });
-
-  return rows.map((row, idx) => ({
-    rank: idx + 1,
-    ...row,
-  }));
+  return rows;
 }
 
 function buildDailyLeaderboard(dayKey) {
@@ -1159,7 +1259,10 @@ function buildDailyLeaderboard(dayKey) {
     ))
     .sort((a, b) => String(a.finishedAt).localeCompare(String(b.finishedAt)));
 
-  return buildLeaderboardFromFinishedGames(games);
+  return combineLeaderboardRows(
+    buildGameLeaderboardRowsFromFinishedGames(games),
+    buildReferralLeaderboardRows(dayKey, dayKey),
+  );
 }
 
 function shiftDateKey(dayKey, deltaDays) {
@@ -1177,7 +1280,54 @@ function buildLeaderboardForDateRange(startDayKey, endDayKey) {
     })
     .sort((a, b) => String(a.finishedAt).localeCompare(String(b.finishedAt)));
 
-  return buildLeaderboardFromFinishedGames(games);
+  return combineLeaderboardRows(
+    buildGameLeaderboardRowsFromFinishedGames(games),
+    buildReferralLeaderboardRows(startDayKey, endDayKey),
+  );
+}
+
+function buildReferralLeaderboard() {
+  const rows = buildReferralLeaderboardRows();
+  rows.sort((a, b) => {
+    if (b.referralPoints !== a.referralPoints) return b.referralPoints - a.referralPoints;
+    if (b.referralCount !== a.referralCount) return b.referralCount - a.referralCount;
+    return a.user.displayName.localeCompare(b.user.displayName, "ru");
+  });
+
+  return rows.map((row, idx) => ({
+    rank: idx + 1,
+    user: row.user,
+    referralPoints: row.referralPoints,
+    referralCount: row.referralCount,
+    points: row.referralPoints,
+  }));
+}
+
+function getCurrentWinnerPeriod(nowTs = Date.now()) {
+  const firstCloseAtMs = Date.parse(`${PERIOD_WINNERS_FIRST_END_DAY}${MOSCOW_UTC_OFFSET_SUFFIX}`);
+  if (!Number.isFinite(firstCloseAtMs)) {
+    return {
+      startDayKey: PERIOD_WINNERS_FIRST_START_DAY,
+      endDayKey: PERIOD_WINNERS_FIRST_END_DAY,
+      closeAt: null,
+    };
+  }
+
+  let startDayKey = PERIOD_WINNERS_FIRST_START_DAY;
+  let endDayKey = PERIOD_WINNERS_FIRST_END_DAY;
+  let closeAtMs = firstCloseAtMs;
+
+  while (closeAtMs < nowTs) {
+    startDayKey = shiftDateKey(endDayKey, 1);
+    endDayKey = shiftDateKey(endDayKey, 7);
+    closeAtMs += 7 * 24 * 60 * 60 * 1000;
+  }
+
+  return {
+    startDayKey,
+    endDayKey,
+    closeAt: new Date(closeAtMs).toISOString(),
+  };
 }
 
 function listCompletedWinnerPeriods() {
@@ -1323,6 +1473,7 @@ app.post("/api/auth/telegram", (req, res) => {
 
   const user = upsertTelegramUser(verified.user);
   linkPendingReferralToUser(user.tgId, user.id);
+  syncReferralUserLinksByTelegramId(user.tgId, user.id);
   const stats = getStatsByUserId(user.id);
   const token = signToken(user.id);
 
@@ -1913,6 +2064,10 @@ app.get("/api/leaderboard/global", authMiddleware, (_req, res) => {
   return res.json({ leaderboard: buildGlobalLeaderboard() });
 });
 
+app.get("/api/leaderboard/referral", authMiddleware, (_req, res) => {
+  return res.json({ leaderboard: buildReferralLeaderboard() });
+});
+
 app.get("/api/leaderboard/daily", authMiddleware, (req, res) => {
   const queryDate = normalizeDateKey(req.query.date);
   const day = queryDate || toDateKey(nowIso(), APP_TIMEZONE);
@@ -1934,6 +2089,17 @@ app.get("/api/leaderboard/daily/winners", authMiddleware, (req, res) => {
   return res.json({
     timezone: APP_TIMEZONE,
     winners: buildPeriodWinners(limit),
+  });
+});
+
+app.get("/api/leaderboard/period/current", authMiddleware, (_req, res) => {
+  const period = getCurrentWinnerPeriod();
+  return res.json({
+    timezone: APP_TIMEZONE,
+    periodStart: period.startDayKey,
+    periodEnd: period.endDayKey,
+    closeAt: period.closeAt,
+    leaderboard: buildLeaderboardForDateRange(period.startDayKey, period.endDayKey),
   });
 });
 

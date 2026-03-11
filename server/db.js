@@ -578,6 +578,88 @@ function linkPendingReferralToUser(invitedTelegramId, invitedUserId) {
   return referral;
 }
 
+function syncReferralUserLinksByTelegramId(telegramId, userId) {
+  const tgId = String(telegramId || "").trim();
+  if (!tgId || !userId) return 0;
+
+  const dbRef = getDb();
+  const now = nowIso();
+  let changed = 0;
+
+  for (const referral of dbRef.referrals) {
+    if (!referral || typeof referral !== "object") continue;
+
+    if (String(referral.inviterTelegramId || "") === tgId && referral.inviterUserId !== userId) {
+      referral.inviterUserId = userId;
+      referral.updatedAt = now;
+      changed += 1;
+    }
+
+    if (
+      String(referral.invitedTelegramId || "") === tgId
+      && String(referral.status || "") === "pending"
+      && referral.invitedUserId !== userId
+    ) {
+      referral.invitedUserId = userId;
+      referral.status = "linked";
+      referral.linkedAt = referral.linkedAt || now;
+      referral.updatedAt = now;
+      changed += 1;
+    }
+  }
+
+  if (changed > 0) {
+    saveDb();
+  }
+  return changed;
+}
+
+function qualifyReferralForGame(game, options = {}) {
+  if (!game || typeof game !== "object") return [];
+  const minMoves = Number.isFinite(Number(options.minMoves)) ? Number(options.minMoves) : 5;
+  if (game.status !== "finished") return [];
+  if (game.rated === false) return [];
+  if (Array.isArray(game.moves) && game.moves.length < minMoves) return [];
+
+  const participantIds = [game.whiteUserId, game.blackUserId].filter(Boolean);
+  const dbRef = getDb();
+  const now = nowIso();
+  const qualified = [];
+
+  for (const invitedUserId of participantIds) {
+    const referral = dbRef.referrals
+      .filter((item) => (
+        item
+        && item.invitedUserId === invitedUserId
+        && item.bonusGrantedAt == null
+        && ["linked", "pending"].includes(String(item.status || ""))
+      ))
+      .sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))[0];
+
+    if (!referral) continue;
+    if (!referral.inviterUserId && referral.inviterTelegramId) {
+      const inviter = dbRef.users.find((user) => String(user.tgId || "") === String(referral.inviterTelegramId || ""));
+      if (inviter) {
+        referral.inviterUserId = inviter.id;
+      }
+    }
+    if (!referral.inviterUserId) continue;
+
+    referral.invitedUserId = invitedUserId;
+    referral.status = "rewarded";
+    referral.qualifiedAt = now;
+    referral.bonusGrantedAt = now;
+    referral.qualifiedGameId = game.id;
+    referral.updatedAt = now;
+    qualified.push(referral);
+  }
+
+  if (qualified.length > 0) {
+    saveDb();
+  }
+  return qualified;
+}
+
 module.exports = {
   initDb,
   getDb,
@@ -606,4 +688,6 @@ module.exports = {
   listReferrals,
   findLatestPendingReferralByInvitedTelegramId,
   linkPendingReferralToUser,
+  syncReferralUserLinksByTelegramId,
+  qualifyReferralForGame,
 };
