@@ -708,12 +708,19 @@ function formatDuration(ms) {
 }
 
 function getPuzzlebotWebhookSecret(req) {
-  return String(
+  const raw = String(
     req.headers["x-puzzlebot-secret"]
     || req.headers["x-webhook-secret"]
     || req.query?.secret
     || "",
   ).trim();
+
+  const prefixedMatch = raw.match(/^x-puzzlebot-secret\s*:\s*(.+)$/i);
+  if (prefixedMatch) {
+    return String(prefixedMatch[1] || "").trim();
+  }
+
+  return raw;
 }
 
 function sanitizePuzzlebotPayload(payload) {
