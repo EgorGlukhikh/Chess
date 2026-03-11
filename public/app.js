@@ -34,13 +34,42 @@ function getTelegramWebApp() {
 }
 
 const THEME_KEY = "chess_theme";
+const SKIN_KEY = "chess_skin";
 const SKINS = {
   classic: {
-    title: "Chess Mini App",
+    label: "Классика",
+    title: "Классика",
     banners: [
-      "\u041a\u043b\u0430\u0441\u0441\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u0440\u0435\u0436\u0438\u043c: \u0441\u043f\u043e\u043a\u043e\u0439\u043d\u0430\u044f \u0442\u0443\u0440\u043d\u0438\u0440\u043d\u0430\u044f \u0430\u0442\u043c\u043e\u0441\u0444\u0435\u0440\u0430",
-      "\u0421\u043e\u0437\u0434\u0430\u0432\u0430\u0439\u0442\u0435 \u0441\u0442\u043e\u043b \u0438 \u0436\u0434\u0438\u0442\u0435 \u0441\u043e\u043f\u0435\u0440\u043d\u0438\u043a\u0430 \u0432 \u0443\u0434\u043e\u0431\u043d\u043e\u0435 \u0432\u0440\u0435\u043c\u044f",
-      "\u0422\u0440\u0435\u043d\u0438\u0440\u043e\u0432\u043a\u0438 \u0441 \u0431\u043e\u0442\u043e\u043c \u043d\u0435 \u0432\u043b\u0438\u044f\u044e\u0442 \u043d\u0430 \u0440\u0435\u0439\u0442\u0438\u043d\u0433",
+      "Спокойная турнирная атмосфера без лишних эффектов",
+      "Классическая доска и чистый интерфейс для ежедневных партий",
+      "Тренировки с ботом не влияют на рейтинг",
+    ],
+  },
+  wood: {
+    label: "Дерево",
+    title: "Дерево",
+    banners: [
+      "Теплый деревянный стиль, как у настольных шахмат",
+      "Бежево-коричневая доска и мягкие природные оттенки интерфейса",
+      "Подходит для долгих партий и спокойной игры без визуального шума",
+    ],
+  },
+  monochrome: {
+    label: "Монохром",
+    title: "Монохром",
+    banners: [
+      "Черно-белая тема с контрастными фигурами и строгой подачей",
+      "Светлые и темные клетки выстроены для максимально читаемой игры",
+      "Минимализм без потери видимости фигур на доске",
+    ],
+  },
+  neon: {
+    label: "Неон",
+    title: "Неон",
+    banners: [
+      "Неоновая доска с диагональной графикой и холодным свечением",
+      "Светлые клетки заряжены штриховкой, темные уходят в фиолетово-синий градиент",
+      "Фигуры остаются черными и белыми, но читаются за счет аккуратной подсветки",
     ],
   },
 };
@@ -60,6 +89,10 @@ function applyTheme(theme) {
   try {
     localStorage.setItem(THEME_KEY, next);
   } catch (_) {}
+}
+
+function getCurrentSkinId() {
+  return document.documentElement.getAttribute("data-skin") || "classic";
 }
 
 function initTheme() {
@@ -83,17 +116,21 @@ function initTheme() {
 function applySkin(skinId) {
   const next = SKINS[skinId] ? skinId : "classic";
   document.documentElement.setAttribute("data-skin", next);
+  try {
+    localStorage.setItem(SKIN_KEY, next);
+  } catch (_) {}
   renderBanner(0);
 }
 
 function initSkin() {
-  applySkin("classic");
+  const saved = localStorage.getItem(SKIN_KEY);
+  applySkin(saved && SKINS[saved] ? saved : "classic");
   startBannerRotation();
 }
 
 function renderBanner(step = null) {
   if (!refs.skinBannerTitle || !refs.skinBannerText) return;
-  const skin = SKINS.classic;
+  const skin = SKINS[getCurrentSkinId()] || SKINS.classic;
   const messages = skin.banners || [];
   const len = Math.max(1, messages.length);
   const index = typeof step === "number"
@@ -827,6 +864,10 @@ function renderProfile() {
   ];
 
   const mode = isProMode() ? "pro" : "training";
+  const skinId = getCurrentSkinId();
+  const skinButtons = Object.entries(SKINS)
+    .map(([id, skin]) => `<button id="skin${id}Btn" class="${skinId === id ? "primary" : "ghost"}" type="button">${escapeHtml(skin.label)}</button>`)
+    .join("");
 
   refs.profileStats.innerHTML = rows
     .map(([label, value]) => {
@@ -839,6 +880,12 @@ function renderProfile() {
         <div class="actions-row" style="margin-top:8px;">
           <button id="modeTrainingBtn" class="${mode === "training" ? "primary" : "ghost"}" type="button">Training</button>
           <button id="modeProBtn" class="${mode === "pro" ? "primary" : "ghost"}" type="button">PRO</button>
+        </div>
+      </div>
+      <div class="stat-card" style="grid-column: 1 / -1;">
+        <div class="muted">Скин доски</div>
+        <div class="actions-row" style="margin-top:8px;">
+          ${skinButtons}
         </div>
       </div>
       ${state.isAdmin ? `
@@ -863,6 +910,10 @@ function renderProfile() {
   const proBtn = document.getElementById("modeProBtn");
   if (trainingBtn) trainingBtn.onclick = () => setHintMode("training");
   if (proBtn) proBtn.onclick = () => setHintMode("pro");
+  Object.keys(SKINS).forEach((id) => {
+    const btn = document.getElementById(`skin${id}Btn`);
+    if (btn) btn.onclick = () => setSkin(id);
+  });
 
   if (state.isAdmin) {
     const loadAdminLogBtn = document.getElementById("loadAdminLogBtn");
@@ -898,8 +949,9 @@ async function setHintMode(hintMode) {
 }
 
 function setSkin(skinId) {
-  if (skinId !== "classic") return;
-  applySkin("classic");
+  if (!SKINS[skinId]) return;
+  applySkin(skinId);
+  renderProfile();
 }
 
 function renderAdminGamesLog() {
